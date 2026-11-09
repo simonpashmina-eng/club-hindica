@@ -1,373 +1,2120 @@
+// ════════════════════════════════════════════════════════════════
+//  CLUB HINDICA — app de inscripción + panel del equipo + panel de la dueña
+//  Pegar en GitHub → club-hindica → src → App.jsx
+//
+//  Direcciones:
+//    club-hindica.vercel.app            → formulario para clientas (el QR)
+//    club-hindica.vercel.app/?t=papudo  → igual, pero anota en qué tienda se inscribió
+//    club-hindica.vercel.app/#equipo    → vendedoras: buscar socia, 20%/5%, regalo
+//    club-hindica.vercel.app/#duena     → Simon: cumpleaños, mensajes, socias, resumen
+// ════════════════════════════════════════════════════════════════
 import { useState, useEffect } from "react";
 
-// ─── SUPABASE ─────────────────────────────────────────────────────────────────
+// ─── CONFIGURACIÓN ─────────────────────────────────────────────
 const SUPABASE_URL = "https://cwjfxuelbzlxingxylfp.supabase.co";
-const SUPABASE_KEY = "sb_publishable_4Mex1P359ZgUxk2VmS1iRA_oAVwjGmc";
+const SUPABASE_KEY = "sb_publishable_4Mex1P359ZgUxk2VmS1iRA_oAVwjGmc"; // llave pública: no da acceso a los datos
+// WhatsApp de Hindica (el que tiene WhatsApp Business), formato 569XXXXXXXX, sin + ni espacios
+const HINDICA_WHATSAPP = "56928814150";
+const INSTAGRAM = "@hindica.cl";
+const TIENDAS = [
+  { id: "maitencillo", nombre: "Maitencillo" },
+  { id: "papudo", nombre: "Papudo" },
+  { id: "renaca", nombre: "Reñaca" },
+  { id: "ladehesa", nombre: "Portal La Dehesa" },
+  { id: "piedraroja", nombre: "Piedra Roja" },
+  { id: "popup", nombre: "Pop-up / Feria" },
+];
+const COMUNAS = ["Zapallar", "Papudo", "Puchuncaví", "Maitencillo", "La Ligua", "Viña del Mar", "Concón",
+  "Valparaíso", "Quilpué", "Villa Alemana", "Lo Barnechea", "Vitacura", "Las Condes", "Providencia",
+  "Ñuñoa", "La Reina", "Colina", "Chicureo", "Santiago", "Peñalolén", "Huechuraba", "La Florida", "Otra"];
+const COLORES = ["Turquesa", "Fucsia", "Naranjo", "Amarillo", "Rojo", "Verde", "Azul", "Morado", "Rosado",
+  "Blanco", "Negro", "Terracota", "Dorado"];
+const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre",
+  "Octubre", "Noviembre", "Diciembre"];
 
-const db = {
-  async get(table, filters={}) {
-    let url = `${SUPABASE_URL}/rest/v1/${table}?select=*`;
-    Object.entries(filters).forEach(([k,v])=>url+=`&${k}=eq.${v}`);
-    const res = await fetch(url,{headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`}});
-    return res.json();
-  },
-  async insert(table, data) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`,{
-      method:"POST",
-      headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`,"Content-Type":"application/json",Prefer:"return=representation"},
-      body:JSON.stringify(data)
-    });
-    return res.json();
-  },
-};
+// Textos de WhatsApp
+const txtBienvenida = (nombre, numero) =>
+  `¡Hola Hindica! 🌸 Soy ${nombre} y me acabo de unir al Club Hindica. Mi número de socia es el ${numero}.`;
+const txtCumple = (nombre, numero) =>
+  `¡Feliz cumpleaños, ${nombre}! 🎂🌸 Todo el equipo Hindica te desea un día precioso.\n\nTu regalo de cumpleaños te espera en cualquiera de nuestras tiendas, sin necesidad de comprar nada. Solo di tu número de socia: ${numero}.\n\nCon cariño, Hindica`;
 
-// ─── ESTILOS ──────────────────────────────────────────────────────────────────
+// ─── ESTILO ────────────────────────────────────────────────────
 const C = {
-  bg:"#FAF7F2", dark:"#1C3A2E", orange:"#E8621F", purple:"#8B3A7E",
-  gold:"#C9963E", text:"#1A1A1A", muted:"#7A7065", border:"#DDD5C8",
-  green:"#2D7A45", red:"#C0392B", white:"#FFFFFF",
+  bg: "#FBF5EC", card: "#FFFFFF", ink: "#2B1D14", muted: "#8A7465", line: "#EADBC8",
+  magenta: "#B0306A", saffron: "#E08A1E", teal: "#1F7A74", green: "#2E7D4F", red: "#B3261E", soft: "#F6E9D8",
 };
-const sInput = { width:"100%", padding:"15px 18px", borderRadius:14, border:`2px solid ${C.border}`, fontSize:16, background:C.white, color:C.text, boxSizing:"border-box", outline:"none", fontFamily:"inherit" };
-const sBtn = (color=C.orange, full=false) => ({ background:color, color:C.white, border:"none", borderRadius:16, padding:"17px 24px", fontSize:16, fontWeight:800, cursor:"pointer", width:full?"100%":"auto", fontFamily:"inherit" });
+const serif = "Georgia, 'Times New Roman', serif";
+const sans = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+const s = {
+  page: { minHeight: "100vh", background: C.bg, color: C.ink, fontFamily: sans, padding: "20px 16px 60px" },
+  wrap: { maxWidth: 480, margin: "0 auto" },
+  wide: { maxWidth: 900, margin: "0 auto" },
+  card: { background: C.card, borderRadius: 18, padding: 20, boxShadow: "0 2px 14px rgba(43,29,20,.07)", marginBottom: 14 },
+  label: { display: "block", fontSize: 14, fontWeight: 600, margin: "14px 0 6px" },
+  hint: { fontSize: 12.5, color: C.muted, marginTop: 4 },
+  input: { width: "100%", boxSizing: "border-box", padding: "13px 14px", fontSize: 16, borderRadius: 12,
+    border: `1.5px solid ${C.line}`, background: "#fff", color: C.ink, fontFamily: sans },
+  btn: { width: "100%", padding: "15px 18px", fontSize: 16.5, fontWeight: 700, borderRadius: 14, border: "none",
+    background: C.magenta, color: "#fff", cursor: "pointer", fontFamily: sans },
+  btn2: { width: "100%", padding: "13px 16px", fontSize: 15, fontWeight: 600, borderRadius: 14,
+    border: `1.5px solid ${C.line}`, background: "#fff", color: C.ink, cursor: "pointer", fontFamily: sans },
+  err: { background: "#FCEBEA", color: C.red, padding: "11px 13px", borderRadius: 12, fontSize: 14, marginTop: 12 },
+  ok: { background: "#E7F4EC", color: C.green, padding: "11px 13px", borderRadius: 12, fontSize: 14, marginTop: 12 },
+  chip: (on, col = C.magenta) => ({ padding: "8px 12px", borderRadius: 999, fontSize: 14, cursor: "pointer",
+    border: `1.5px solid ${on ? col : C.line}`, background: on ? col : "#fff", color: on ? "#fff" : C.ink }),
+  tag: (col) => ({ display: "inline-block", padding: "4px 10px", borderRadius: 999, fontSize: 12.5, fontWeight: 600,
+    background: col + "1A", color: col, marginRight: 6, marginBottom: 6 }),
+};
 
-// ─── DATOS ────────────────────────────────────────────────────────────────────
-const COMUNAS = [
-  "Las Condes","Vitacura","Lo Barnechea","Providencia","Ñuñoa","La Reina",
-  "Santiago Centro","Peñalolén","Macul","San Miguel","La Florida","Huechuraba",
-  "Colina / Chicureo","Maitencillo","Papudo","Zapallar","Cachagua","Reñaca",
-  "Viña del Mar","Concón","Valparaíso","Otra"
-];
+// Franja decorativa tipo bloque de estampado
+const Borde = () => (
+  <div style={{ height: 8, borderRadius: 8, margin: "0 0 18px",
+    background: `repeating-linear-gradient(90deg, ${C.magenta} 0 18px, ${C.saffron} 18px 36px, ${C.teal} 36px 54px, ${C.saffron} 54px 72px)` }} />
+);
+const Logo = ({ sub }) => (
+  <div style={{ textAlign: "center", margin: "6px 0 16px" }}>
+    <div style={{ fontFamily: serif, fontSize: 13, letterSpacing: 5, color: C.saffron, textTransform: "uppercase" }}>Club</div>
+    <div style={{ fontFamily: serif, fontSize: 38, letterSpacing: 6, color: C.magenta, lineHeight: 1.1 }}>HINDICA</div>
+    {sub && <div style={{ fontSize: 14, color: C.muted, marginTop: 6 }}>{sub}</div>}
+  </div>
+);
 
-const RANGOS_EDAD = ["Menos de 25","25 – 34","35 – 44","45 – 54","55 – 64","65 o más"];
+// ─── CONEXIÓN SEGURA ───────────────────────────────────────────
+async function rpc(fn, args) {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify(args),
+    });
+    if (!r.ok) return { ok: false, error: "No pudimos conectar. Intenta de nuevo en un momento." };
+    return await r.json();
+  } catch {
+    return { ok: false, error: "Sin conexión a internet. Intenta de nuevo." };
+  }
+}
+const guardar = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} };
+const leer = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+const waLink = (tel, texto) => `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`;
+const formatoRut = (v) => {
+  const r = v.replace(/[^0-9kK]/g, "").toUpperCase().slice(0, 9);
+  if (r.length < 2) return r;
+  const cuerpo = r.slice(0, -1).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${cuerpo}-${r.slice(-1)}`;
+};
+const hoy = () => new Date(new Date().toLocaleString("en-US", { timeZone: "America/Santiago" }));
 
-const COLORES = [
-  {n:"Azul", h:"#3B6EA5"}, {n:"Turquesa", h:"#3BA5A0"}, {n:"Verde", h:"#4A8B5C"},
-  {n:"Morado", h:"#8B3A7E"}, {n:"Rosa", h:"#D96BA0"}, {n:"Rojo", h:"#C0392B"},
-  {n:"Naranja", h:"#E8621F"}, {n:"Amarillo", h:"#D9A93B"}, {n:"Tierra", h:"#A67C52"},
-  {n:"Café", h:"#6B4E37"}, {n:"Negro", h:"#2C2C2C"}, {n:"Blanco", h:"#F5F2ED"},
-];
-
-const COMBINACIONES = [
-  "Tonos tierra y naturales",
-  "Colores vivos y contrastantes",
-  "Azules y turquesas",
-  "Rosados y morados",
-  "Verdes y dorados",
-  "Neutros con un toque de color",
-  "Todo colorido, sin miedo",
-];
-
-const BENEFICIOS = [
-  { icono:"🏷️", titulo:"Precio de socia", texto:"Precio especial en toda la ropa, siempre." },
-  { icono:"🎁", titulo:"3 x 2 en accesorios", texto:"Llevas tres, pagas dos. En aros, collares, pulseras y más." },
-  { icono:"🎂", titulo:"Regalo de cumpleaños", texto:"Un regalo para ti, sin necesidad de comprar nada. Lo retiras en tienda cuando puedas." },
-  { icono:"📵", titulo:"Máximo 6 mensajes al año", texto:"No te vamos a molestar. Te escribimos solo cuando vale la pena." },
-  { icono:"✨", titulo:"Eventos exclusivos", texto:"Invitaciones a eventos solo para socias, cerca de donde vives." },
-  { icono:"👗", titulo:"Primero en todo", texto:"Acceso anticipado a colecciones nuevas y liquidaciones." },
-];
-
-// ─── COMPONENTES ──────────────────────────────────────────────────────────────
-function Progreso({ actual, total }) {
-  return (
-    <div style={{ padding:"0 24px", marginBottom:28 }}>
-      <div style={{ display:"flex", gap:6 }}>
-        {Array.from({length:total}).map((_,i)=>(
-          <div key={i} style={{ flex:1, height:4, borderRadius:4, background: i<actual ? C.orange : "rgba(255,255,255,0.15)", transition:"all 0.3s" }}/>
-        ))}
-      </div>
-      <div style={{ fontSize:12, color:"rgba(255,255,255,0.45)", marginTop:10, fontWeight:600 }}>
-        Paso {actual} de {total}
-      </div>
-    </div>
-  );
+// ════════════════════════════════════════════════════════════════
+export default function App() {
+  const [ruta, setRuta] = useState(window.location.hash);
+  useEffect(() => {
+    const f = () => setRuta(window.location.hash);
+    window.addEventListener("hashchange", f);
+    return () => window.removeEventListener("hashchange", f);
+  }, []);
+  if (ruta === "#equipo") return <Equipo />;
+  if (ruta === "#duena") return <Duena />;
+  return <Inscripcion />;
 }
 
-function Pantalla({ children, titulo, subtitulo }) {
-  return (
-    <div style={{ minHeight:"100vh", background:C.dark, fontFamily:"system-ui,-apple-system,sans-serif", display:"flex", flexDirection:"column" }}>
-      {children}
-    </div>
-  );
-}
-
-// ─── APP ──────────────────────────────────────────────────────────────────────
-export default function ClubHindica() {
-  const [paso, setPaso] = useState("bienvenida");
-  const [datos, setDatos] = useState({
-    nombre:"", telefono:"", cumple_dia:"", cumple_mes:"",
-    comuna:"", rango_edad:"", color_favorito:"", combinacion:"",
-  });
-  const [numeroSocia, setNumeroSocia] = useState(null);
+// ════════════════════════════════════════════════════════════════
+//  1. FORMULARIO DE INSCRIPCIÓN (lo que abre el QR)
+// ════════════════════════════════════════════════════════════════
+function Inscripcion() {
+  const tienda = new URLSearchParams(window.location.search).get("t") || "";
+  const [f, setF] = useState({ nombre: "", telefono: "", rut: "", dia: "", mes: "", anio: "", comuna: "",
+    color: "", combinacion: "", acepta: false });
+  const [verDatos, setVerDatos] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
+  const [listo, setListo] = useState(null);
+  const set = (k) => (e) => setF({ ...f, [k]: e?.target ? (e.target.type === "checkbox" ? e.target.checked : e.target.value) : e });
+  const anioMax = hoy().getFullYear() - 18;
+  const anios = Array.from({ length: anioMax - 1929 }, (_, i) => anioMax - i);
 
-  const set = (k,v) => setDatos(p=>({...p,[k]:v}));
-
-  const registrar = async () => {
-    setEnviando(true);
+  async function enviar() {
     setError("");
-    try {
-      const existentes = await db.get("socias", {});
-      const siguiente = 1001 + (Array.isArray(existentes) ? existentes.length : 0);
-      const res = await db.insert("socias", {
-        numero_socia: siguiente,
-        nombre: datos.nombre,
-        telefono: datos.telefono,
-        cumple_dia: Number(datos.cumple_dia),
-        cumple_mes: Number(datos.cumple_mes),
-        comuna: datos.comuna,
-        rango_edad: datos.rango_edad,
-        color_favorito: datos.color_favorito,
-        combinacion_favorita: datos.combinacion,
-        activa: false,
-      });
-      setNumeroSocia(siguiente);
-      setPaso("bienvenidaClub");
-    } catch(e) {
-      setError("Hubo un problema. Intenta de nuevo o pídele ayuda a la vendedora.");
-    }
+    if (f.nombre.trim().length < 2) return setError("Escribe tu nombre.");
+    if (f.telefono.replace(/\D/g, "").length < 9) return setError("Escribe tu celular (9 dígitos).");
+    if (f.rut.replace(/[^0-9kK]/g, "").length < 8) return setError("Escribe tu RUT.");
+    if (!f.dia || !f.mes || !f.anio) return setError("Elige tu fecha de nacimiento.");
+    if (!f.comuna.trim()) return setError("Cuéntanos tu comuna.");
+    if (!f.acepta) return setError("Para unirte, acepta cómo cuidamos tus datos.");
+    const fecha = `${f.anio}-${String(f.mes).padStart(2, "0")}-${String(f.dia).padStart(2, "0")}`;
+    const d = new Date(fecha + "T12:00:00");
+    if (d.getDate() !== Number(f.dia)) return setError("Esa fecha no existe. Revisa el día.");
+    setEnviando(true);
+    const r = await rpc("club_registrar", {
+      p_nombre: f.nombre, p_telefono: f.telefono, p_rut: f.rut, p_fecha_nacimiento: fecha,
+      p_comuna: f.comuna, p_color_favorito: f.color || null, p_combinacion: f.combinacion || null,
+      p_tienda: tienda || null, p_acepta: f.acepta,
+    });
     setEnviando(false);
-  };
-
-  // ── BIENVENIDA ──────────────────────────────────────────────────────────────
-  if (paso === "bienvenida") return (
-    <Pantalla>
-      <div style={{ padding:"56px 28px 36px", textAlign:"center" }}>
-        <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"6px", textTransform:"uppercase", marginBottom:14 }}>BIENVENIDA AL</div>
-        <div style={{ fontSize:38, fontWeight:900, color:C.white, letterSpacing:"4px", lineHeight:1.1 }}>CLUB<br/>HINDICA</div>
-        <div style={{ width:44, height:3, background:C.orange, margin:"20px auto" }}/>
-        <div style={{ fontSize:15, color:"rgba(255,255,255,0.6)", lineHeight:1.6, maxWidth:300, margin:"0 auto" }}>
-          Un espacio para nuestras clientas más queridas. Gratis, para siempre.
-        </div>
-      </div>
-
-      <div style={{ flex:1, background:C.bg, borderRadius:"32px 32px 0 0", padding:"32px 22px 40px" }}>
-        <div style={{ fontSize:13, fontWeight:800, color:C.orange, textTransform:"uppercase", letterSpacing:"1.5px", marginBottom:20, textAlign:"center" }}>
-          Tus beneficios
-        </div>
-
-        {BENEFICIOS.map((b,i)=>(
-          <div key={i} style={{ display:"flex", gap:16, alignItems:"flex-start", padding:"16px 0", borderBottom: i<BENEFICIOS.length-1 ? `1px solid ${C.border}` : "none" }}>
-            <span style={{ fontSize:26, flexShrink:0, lineHeight:1 }}>{b.icono}</span>
-            <div>
-              <div style={{ fontSize:15, fontWeight:800, color:C.dark, marginBottom:3 }}>{b.titulo}</div>
-              <div style={{ fontSize:13.5, color:C.muted, lineHeight:1.5 }}>{b.texto}</div>
-            </div>
-          </div>
-        ))}
-
-        <div style={{ background:"#FEF8F3", border:`1.5px solid ${C.orange}`, borderRadius:16, padding:"18px 20px", margin:"24px 0" }}>
-          <div style={{ fontSize:14, fontWeight:800, color:C.orange, marginBottom:6 }}>Tranquila, no te vamos a molestar</div>
-          <div style={{ fontSize:13.5, color:C.muted, lineHeight:1.6 }}>
-            Te escribimos como máximo 6 veces al año. Solo para cosas que realmente valen la pena: eventos, colecciones nuevas y tu regalo de cumpleaños.
-          </div>
-        </div>
-
-        <button onClick={()=>setPaso("nombre")} style={{ ...sBtn(C.orange,true), padding:"19px", fontSize:17 }}>
-          Quiero ser socia →
-        </button>
-        <div style={{ textAlign:"center", fontSize:12.5, color:C.muted, marginTop:14 }}>
-          Toma menos de un minuto. Es gratis.
-        </div>
-      </div>
-    </Pantalla>
-  );
-
-  // ── NOMBRE ──────────────────────────────────────────────────────────────────
-  if (paso === "nombre") return (
-    <Pantalla>
-      <div style={{ padding:"36px 0 0" }}>
-        <Progreso actual={1} total={6}/>
-      </div>
-      <div style={{ flex:1, background:C.bg, borderRadius:"28px 28px 0 0", padding:"32px 22px" }}>
-        <div style={{ fontSize:24, fontWeight:800, color:C.dark, marginBottom:8, lineHeight:1.3 }}>¿Cómo te llamas?</div>
-        <div style={{ fontSize:14, color:C.muted, marginBottom:26 }}>Para saludarte por tu nombre cuando vengas.</div>
-        <input style={sInput} placeholder="Tu nombre" value={datos.nombre} onChange={e=>set("nombre",e.target.value)} autoFocus/>
-        <button disabled={!datos.nombre.trim()} onClick={()=>setPaso("telefono")} style={{ ...sBtn(datos.nombre.trim()?C.orange:C.border,true), marginTop:24, opacity: datos.nombre.trim()?1:0.5 }}>
-          Continuar →
-        </button>
-      </div>
-    </Pantalla>
-  );
-
-  // ── TELÉFONO ────────────────────────────────────────────────────────────────
-  if (paso === "telefono") return (
-    <Pantalla>
-      <div style={{ padding:"36px 0 0" }}>
-        <Progreso actual={2} total={6}/>
-      </div>
-      <div style={{ flex:1, background:C.bg, borderRadius:"28px 28px 0 0", padding:"32px 22px" }}>
-        <div style={{ fontSize:24, fontWeight:800, color:C.dark, marginBottom:8, lineHeight:1.3 }}>Tu teléfono</div>
-        <div style={{ fontSize:14, color:C.muted, marginBottom:26 }}>Solo para avisarte de eventos y tu regalo de cumpleaños. Máximo 6 veces al año.</div>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <span style={{ fontSize:17, fontWeight:700, color:C.muted }}>+56</span>
-          <input style={sInput} type="tel" placeholder="9 1234 5678" value={datos.telefono} onChange={e=>set("telefono",e.target.value.replace(/\D/g,"").slice(0,9))} autoFocus/>
-        </div>
-        <button disabled={datos.telefono.length<8} onClick={()=>setPaso("cumple")} style={{ ...sBtn(datos.telefono.length>=8?C.orange:C.border,true), marginTop:24, opacity: datos.telefono.length>=8?1:0.5 }}>
-          Continuar →
-        </button>
-        <button onClick={()=>setPaso("nombre")} style={{ background:"transparent", border:"none", color:C.muted, fontSize:14, cursor:"pointer", fontFamily:"inherit", marginTop:16, width:"100%" }}>← Atrás</button>
-      </div>
-    </Pantalla>
-  );
-
-  // ── CUMPLEAÑOS ──────────────────────────────────────────────────────────────
-  if (paso === "cumple") {
-    const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-    const ok = datos.cumple_dia && datos.cumple_mes;
-    return (
-      <Pantalla>
-        <div style={{ padding:"36px 0 0" }}>
-          <Progreso actual={3} total={6}/>
-        </div>
-        <div style={{ flex:1, background:C.bg, borderRadius:"28px 28px 0 0", padding:"32px 22px 40px" }}>
-          <div style={{ fontSize:24, fontWeight:800, color:C.dark, marginBottom:8, lineHeight:1.3 }}>¿Cuándo es tu cumpleaños? 🎂</div>
-          <div style={{ fontSize:14, color:C.muted, marginBottom:26 }}>Tenemos un regalo para ti. Sin comprar nada.</div>
-
-          <div style={{ fontSize:12, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:10 }}>Día</div>
-          <input style={{...sInput, marginBottom:22}} type="number" placeholder="Ej: 15" value={datos.cumple_dia} onChange={e=>{const v=e.target.value; if(v==="" || (Number(v)>=1 && Number(v)<=31)) set("cumple_dia",v);}}/>
-
-          <div style={{ fontSize:12, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:10 }}>Mes</div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
-            {MESES.map((m,i)=>(
-              <button key={m} onClick={()=>set("cumple_mes",String(i+1))} style={{
-                padding:"12px 6px", borderRadius:12, fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer",
-                border:`2px solid ${datos.cumple_mes===String(i+1)?C.orange:C.border}`,
-                background: datos.cumple_mes===String(i+1)?"#FEF0E8":C.white,
-                color: datos.cumple_mes===String(i+1)?C.orange:C.text,
-              }}>{m.slice(0,3)}</button>
-            ))}
-          </div>
-
-          <button disabled={!ok} onClick={()=>setPaso("comuna")} style={{ ...sBtn(ok?C.orange:C.border,true), marginTop:26, opacity: ok?1:0.5 }}>
-            Continuar →
-          </button>
-          <button onClick={()=>setPaso("telefono")} style={{ background:"transparent", border:"none", color:C.muted, fontSize:14, cursor:"pointer", fontFamily:"inherit", marginTop:16, width:"100%" }}>← Atrás</button>
-        </div>
-      </Pantalla>
-    );
+    if (!r.ok) return setError(r.error || "Algo falló. Intenta de nuevo.");
+    setListo(r);
+    window.scrollTo(0, 0);
   }
 
-  // ── COMUNA ──────────────────────────────────────────────────────────────────
-  if (paso === "comuna") return (
-    <Pantalla>
-      <div style={{ padding:"36px 0 0" }}>
-        <Progreso actual={4} total={6}/>
-      </div>
-      <div style={{ flex:1, background:C.bg, borderRadius:"28px 28px 0 0", padding:"32px 22px 40px" }}>
-        <div style={{ fontSize:24, fontWeight:800, color:C.dark, marginBottom:8, lineHeight:1.3 }}>¿Dónde vives?</div>
-        <div style={{ fontSize:14, color:C.muted, marginBottom:24 }}>Para invitarte a eventos cerca tuyo.</div>
-        <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-          {COMUNAS.map(c=>(
-            <button key={c} onClick={()=>{set("comuna",c); setTimeout(()=>setPaso("edad"),200);}} style={{
-              padding:"11px 16px", borderRadius:22, fontFamily:"inherit", fontSize:14, fontWeight:600, cursor:"pointer",
-              border:`2px solid ${datos.comuna===c?C.orange:C.border}`,
-              background: datos.comuna===c?"#FEF0E8":C.white,
-              color: datos.comuna===c?C.orange:C.text,
-            }}>{c}</button>
-          ))}
+  if (listo) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo />
+      <Borde />
+      <div style={{ ...s.card, textAlign: "center", padding: "28px 20px" }}>
+        <div style={{ fontSize: 40 }}>🌸</div>
+        <div style={{ fontFamily: serif, fontSize: 26, margin: "8px 0 4px" }}>¡Bienvenida, {listo.nombre}!</div>
+        <div style={{ color: C.muted, fontSize: 15 }}>Ya eres parte del Club Hindica</div>
+        <div style={{ margin: "22px auto 8px", padding: "18px 10px", borderRadius: 18, border: `2px dashed ${C.saffron}`, maxWidth: 260 }}>
+          <div style={{ fontSize: 13, letterSpacing: 3, color: C.saffron, textTransform: "uppercase" }}>Tu número de socia</div>
+          <div style={{ fontFamily: serif, fontSize: 56, color: C.magenta, lineHeight: 1.1 }}>{listo.numero}</div>
         </div>
-        <button onClick={()=>setPaso("cumple")} style={{ background:"transparent", border:"none", color:C.muted, fontSize:14, cursor:"pointer", fontFamily:"inherit", marginTop:26, width:"100%" }}>← Atrás</button>
+        <div style={{ fontSize: 15.5, margin: "16px 0 20px", lineHeight: 1.5 }}>
+          Muéstralo en caja: <b>hoy tienes 20% de descuento</b> en tu compra de bienvenida.
+        </div>
+        {HINDICA_WHATSAPP && !HINDICA_WHATSAPP.includes("X") ? (
+          <>
+            <a href={waLink(HINDICA_WHATSAPP, txtBienvenida(listo.nombre, listo.numero))}
+               style={{ ...s.btn, display: "block", textDecoration: "none", background: "#1FA855", boxSizing: "border-box" }}>
+              Guardar mi número en WhatsApp
+            </a>
+            <div style={s.hint}>Se abre WhatsApp con tu número escrito: solo aprieta enviar. Así siempre lo tendrás en tu chat con Hindica.</div>
+          </>
+        ) : (
+          <div style={s.hint}>Toma una captura de pantalla para no olvidar tu número.</div>
+        )}
       </div>
-    </Pantalla>
+    </div></div>
   );
 
-  // ── EDAD ────────────────────────────────────────────────────────────────────
-  if (paso === "edad") return (
-    <Pantalla>
-      <div style={{ padding:"36px 0 0" }}>
-        <Progreso actual={5} total={6}/>
-      </div>
-      <div style={{ flex:1, background:C.bg, borderRadius:"28px 28px 0 0", padding:"32px 22px 40px" }}>
-        <div style={{ fontSize:24, fontWeight:800, color:C.dark, marginBottom:8, lineHeight:1.3 }}>¿En qué rango de edad estás?</div>
-        <div style={{ fontSize:14, color:C.muted, marginBottom:24 }}>Nos ayuda a elegir mejor lo que traemos.</div>
-        {RANGOS_EDAD.map(r=>(
-          <button key={r} onClick={()=>{set("rango_edad",r); setTimeout(()=>setPaso("colores"),200);}} style={{
-            width:"100%", padding:"17px 20px", borderRadius:14, fontFamily:"inherit", fontSize:16, fontWeight:700, cursor:"pointer", textAlign:"left", marginBottom:10,
-            border:`2px solid ${datos.rango_edad===r?C.orange:C.border}`,
-            background: datos.rango_edad===r?"#FEF0E8":C.white,
-            color: datos.rango_edad===r?C.orange:C.text,
-          }}>{r}</button>
-        ))}
-        <button onClick={()=>setPaso("comuna")} style={{ background:"transparent", border:"none", color:C.muted, fontSize:14, cursor:"pointer", fontFamily:"inherit", marginTop:16, width:"100%" }}>← Atrás</button>
-      </div>
-    </Pantalla>
-  );
-
-  // ── COLORES ─────────────────────────────────────────────────────────────────
-  if (paso === "colores") {
-    const ok = datos.color_favorito && datos.combinacion;
-    return (
-      <Pantalla>
-        <div style={{ padding:"36px 0 0" }}>
-          <Progreso actual={6} total={6}/>
-        </div>
-        <div style={{ flex:1, background:C.bg, borderRadius:"28px 28px 0 0", padding:"32px 22px 40px" }}>
-          <div style={{ fontSize:24, fontWeight:800, color:C.dark, marginBottom:8, lineHeight:1.3 }}>Cuéntanos de colores 🎨</div>
-          <div style={{ fontSize:14, color:C.muted, marginBottom:26 }}>Así elegimos mejor lo que traemos de India, pensando en ti.</div>
-
-          <div style={{ fontSize:12, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:12 }}>Tu color favorito</div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:28 }}>
-            {COLORES.map(c=>(
-              <button key={c.n} onClick={()=>set("color_favorito",c.n)} style={{
-                padding:"10px 4px", borderRadius:12, fontFamily:"inherit", cursor:"pointer",
-                border:`2.5px solid ${datos.color_favorito===c.n?C.dark:"transparent"}`,
-                background: C.white, display:"flex", flexDirection:"column", alignItems:"center", gap:6,
-              }}>
-                <div style={{ width:30, height:30, borderRadius:"50%", background:c.h, border: c.n==="Blanco" ? `1px solid ${C.border}` : "none" }}/>
-                <span style={{ fontSize:11, fontWeight:600, color:C.text }}>{c.n}</span>
-              </button>
-            ))}
+  return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Gratis · menos de un minuto" />
+      <Borde />
+      <div style={s.card}>
+        <div style={{ fontFamily: serif, fontSize: 21, marginBottom: 12 }}>Al unirte recibes</div>
+        {[
+          ["🎉", "20% de descuento hoy", "Una vez, en tu compra de bienvenida"],
+          ["🏷️", "5% en todas tus compras", "Siempre, en todas las tiendas"],
+          ["🎂", "Regalo de cumpleaños", "Sin comprar nada. Retíralo cuando quieras"],
+          ["✨", "Primero en todo", "Ofertas exclusivas, ediciones especiales y colecciones nuevas antes que nadie"],
+          ["💌", "Eventos VIP", "Invitaciones a los eventos exclusivos del Club"],
+          ["📵", "Máximo 5 mensajes al año", "Incluido tu saludo de cumpleaños. Lo prometemos"],
+          ["🔒", "Tus datos son tuyos", "No los compartimos con nadie"],
+        ].map(([i, t, d]) => (
+          <div key={t} style={{ display: "flex", gap: 12, padding: "8px 0", borderTop: `1px solid ${C.soft}` }}>
+            <div style={{ fontSize: 22, width: 28 }}>{i}</div>
+            <div><div style={{ fontWeight: 700, fontSize: 15 }}>{t}</div><div style={{ fontSize: 13.5, color: C.muted }}>{d}</div></div>
           </div>
-
-          <div style={{ fontSize:12, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:12 }}>Tu combinación favorita</div>
-          {COMBINACIONES.map(c=>(
-            <button key={c} onClick={()=>set("combinacion",c)} style={{
-              width:"100%", padding:"15px 18px", borderRadius:13, fontFamily:"inherit", fontSize:14.5, fontWeight:600, cursor:"pointer", textAlign:"left", marginBottom:9,
-              border:`2px solid ${datos.combinacion===c?C.orange:C.border}`,
-              background: datos.combinacion===c?"#FEF0E8":C.white,
-              color: datos.combinacion===c?C.orange:C.text,
-            }}>{c}</button>
-          ))}
-
-          {error && <div style={{ background:"#FDECEA", border:`1.5px solid ${C.red}`, borderRadius:12, padding:14, marginTop:18, fontSize:14, color:C.red }}>{error}</div>}
-
-          <button disabled={!ok || enviando} onClick={registrar} style={{ ...sBtn(ok&&!enviando?C.green:C.border,true), marginTop:26, opacity: ok&&!enviando?1:0.5, padding:"19px", fontSize:17 }}>
-            {enviando ? "Creando tu membresía…" : "✓ Ser socia del Club Hindica"}
-          </button>
-          <button onClick={()=>setPaso("edad")} style={{ background:"transparent", border:"none", color:C.muted, fontSize:14, cursor:"pointer", fontFamily:"inherit", marginTop:16, width:"100%" }}>← Atrás</button>
-        </div>
-      </Pantalla>
-    );
-  }
-
-  // ── BIENVENIDA AL CLUB ──────────────────────────────────────────────────────
-  if (paso === "bienvenidaClub") return (
-    <div style={{ minHeight:"100vh", background:C.dark, fontFamily:"system-ui,-apple-system,sans-serif", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 24px", textAlign:"center" }}>
-      <div style={{ fontSize:56, marginBottom:20 }}>🌿</div>
-      <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)", letterSpacing:"5px", textTransform:"uppercase", marginBottom:12 }}>BIENVENIDA AL CLUB</div>
-      <div style={{ fontSize:28, fontWeight:900, color:C.white, marginBottom:8, lineHeight:1.2 }}>¡Ya eres socia,<br/>{datos.nombre}!</div>
-
-      <div style={{ background:"rgba(255,255,255,0.08)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:24, padding:"28px 36px", margin:"28px 0", width:"100%", maxWidth:320 }}>
-        <div style={{ fontSize:11, color:"rgba(255,255,255,0.45)", textTransform:"uppercase", letterSpacing:"2px", marginBottom:10 }}>Tu número de socia</div>
-        <div style={{ fontSize:52, fontWeight:900, color:C.gold, letterSpacing:"2px", lineHeight:1 }}>{numeroSocia}</div>
-        <div style={{ width:36, height:2, background:"rgba(255,255,255,0.2)", margin:"18px auto" }}/>
-        <div style={{ fontSize:13, color:"rgba(255,255,255,0.55)", lineHeight:1.6 }}>
-          Muéstrale este número a la vendedora para activar tus beneficios en tu próxima compra.
-        </div>
+        ))}
       </div>
 
-      <div style={{ background:"rgba(232,98,31,0.15)", border:`1px solid ${C.orange}`, borderRadius:16, padding:"16px 20px", maxWidth:320, marginBottom:24 }}>
-        <div style={{ fontSize:13.5, color:"rgba(255,255,255,0.8)", lineHeight:1.6 }}>
-          <strong style={{ color:C.orange }}>Toma una captura de pantalla</strong> para guardar tu número. También te lo enviaremos por WhatsApp.
-        </div>
-      </div>
+      <div style={s.card}>
+        <label style={s.label}>Nombre y apellido</label>
+        <input style={s.input} value={f.nombre} onChange={set("nombre")} autoComplete="name" placeholder="Ej: Camila Rojas" />
 
-      <div style={{ fontSize:13.5, color:"rgba(255,255,255,0.5)", lineHeight:1.7, maxWidth:300 }}>
-        Nos vemos pronto. Y no olvides: tu regalo de cumpleaños te espera el {datos.cumple_dia} de {["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][Number(datos.cumple_mes)]}. 🎂
+        <label style={s.label}>Celular</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ ...s.input, width: 70, textAlign: "center", background: C.soft }}>+56</div>
+          <input style={s.input} value={f.telefono} onChange={set("telefono")} inputMode="tel" autoComplete="tel" placeholder="9 1234 5678" />
+        </div>
+        <div style={s.hint}>Aquí te llega tu número de socia y tu saludo de cumpleaños.</div>
+
+        <label style={s.label}>RUT</label>
+        <input style={s.input} value={f.rut} onChange={(e) => set("rut")(formatoRut(e.target.value))} placeholder="12.345.678-9" />
+        <div style={s.hint}>Solo para que los beneficios sean uno por persona. Se guarda cifrado: nadie del equipo puede verlo.</div>
+
+        <label style={s.label}>Fecha de nacimiento</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <select style={{ ...s.input, width: "auto", minWidth: 0, flex: 1 }} value={f.dia} onChange={set("dia")}>
+            <option value="">Día</option>{Array.from({ length: 31 }, (_, i) => <option key={i} value={i + 1}>{i + 1}</option>)}
+          </select>
+          <select style={{ ...s.input, width: "auto", minWidth: 0, flex: 1.7 }} value={f.mes} onChange={set("mes")}>
+            <option value="">Mes</option>{MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+          </select>
+          <select style={{ ...s.input, width: "auto", minWidth: 0, flex: 1.3 }} value={f.anio} onChange={set("anio")}>
+            <option value="">Año</option>{anios.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+        <div style={s.hint}>Para tu regalo de cumpleaños. Club para mayores de 18.</div>
+
+        <label style={s.label}>Comuna donde vives</label>
+        <input style={s.input} value={f.comuna} onChange={set("comuna")} list="comunas" placeholder="Ej: Zapallar" />
+        <datalist id="comunas">{COMUNAS.map((c) => <option key={c} value={c} />)}</datalist>
+
+        <label style={s.label}>Tu color favorito <span style={{ color: C.muted, fontWeight: 400 }}>(opcional)</span></label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+          {COLORES.map((c) => <div key={c} style={s.chip(f.color === c)} onClick={() => set("color")(f.color === c ? "" : c)}>{c}</div>)}
+        </div>
+        <label style={s.label}>Tu combinación de colores favorita <span style={{ color: C.muted, fontWeight: 400 }}>(opcional)</span></label>
+        <input style={s.input} value={f.combinacion} onChange={set("combinacion")} placeholder="Ej: turquesa con dorado" />
+        <div style={s.hint}>Nos ayuda a traer desde India lo que más te gusta.</div>
+
+        <label style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 20, fontSize: 14.5, lineHeight: 1.45 }}>
+          <input type="checkbox" checked={f.acepta} onChange={set("acepta")} style={{ width: 22, height: 22, marginTop: 1, accentColor: C.magenta }} />
+          <span>Acepto que Hindica guarde mis datos para el Club y me envíe hasta 5 mensajes de WhatsApp al año.{" "}
+            <span style={{ color: C.magenta, textDecoration: "underline", cursor: "pointer" }} onClick={(e) => { e.preventDefault(); setVerDatos(!verDatos); }}>
+              Cómo cuidamos tus datos</span></span>
+        </label>
+        {verDatos && <Privacidad />}
+
+        {error && <div style={s.err}>{error}</div>}
+        <button style={{ ...s.btn, marginTop: 18, opacity: enviando ? 0.6 : 1 }} disabled={enviando} onClick={enviar}>
+          {enviando ? "Inscribiendo…" : "Unirme al Club"}
+        </button>
       </div>
+    </div></div>
+  );
+}
+
+function Privacidad() {
+  return (
+    <div style={{ background: C.soft, borderRadius: 12, padding: 14, fontSize: 13.5, lineHeight: 1.55, marginTop: 10 }}>
+      <b>Quién:</b> Hindica es responsable de tus datos.<br />
+      <b>Qué guardamos:</b> nombre, celular, fecha de nacimiento, comuna, tu color favorito (si lo das), en qué tienda te uniste y tus beneficios usados.
+      Del RUT guardamos solo una huella cifrada y los últimos 4 caracteres: nadie puede leer tu RUT completo.<br />
+      <b>Para qué:</b> reconocerte como socia, aplicar tus descuentos, entregarte tu regalo de cumpleaños, invitarte a eventos
+      y avisarte de colecciones nuevas, con un máximo de 5 mensajes de WhatsApp al año.<br />
+      <b>Con quién:</b> con nadie. No vendemos ni compartimos tus datos. Se guardan en un servidor seguro con acceso restringido.<br />
+      <b>Tus derechos:</b> puedes pedir ver, corregir o borrar tus datos, o dejar de recibir mensajes, en cualquier tienda,
+      escribiendo <b>BAJA</b> a nuestro WhatsApp o por Instagram {INSTAGRAM}.<br />
+      <b>Cuánto tiempo:</b> mientras seas socia. Si pides salir, borramos tus datos.
     </div>
+ );
+  // ════════════════════════════════════════════════════════════════
+//  2. PANEL DEL EQUIPO (vendedoras)  →  /#equipo
+// ════════════════════════════════════════════════════════════════
+function Equipo() {
+  const [clave, setClave] = useState(leer("club_clave_equipo") || "");
+  const [entrada, setEntrada] = useState("");
+  const [tienda, setTienda] = useState(leer("club_tienda") || "");
+  const [busca, setBusca] = useState("");
+  const [socia, setSocia] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [cargando, setCargando] = useState(false);
+
+  async function entrar() {
+    const r = await rpc("club_buscar", { p_clave: entrada, p_numero: 0 });
+    if (r.error && r.error.startsWith("Clave")) return setMsg({ e: r.error });
+    guardar("club_clave_equipo", entrada); setClave(entrada); setMsg(null);
+  }
+  function salir() { guardar("club_clave_equipo", null); setClave(""); setSocia(null); }
+
+  async function buscar() {
+    setMsg(null); setSocia(null);
+    const v = busca.trim();
+    if (!v) return;
+    const esNumero = /^\d{4,6}$/.test(v);
+    setCargando(true);
+    const r = await rpc("club_buscar", esNumero ? { p_clave: clave, p_numero: Number(v) } : { p_clave: clave, p_rut: v });
+    setCargando(false);
+    if (!r.ok) { if (r.error?.startsWith("Clave")) salir(); return setMsg({ e: r.error }); }
+    setSocia(r.socia);
+  }
+  async function compra(bienvenida) {
+    const r = await rpc("club_compra", { p_clave: clave, p_numero: socia.numero, p_bienvenida: bienvenida, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Listo. Aplica ${r.descuento}% de descuento a ${r.socia.primer_nombre}.` });
+  }
+  async function regalo() {
+    if (!window.confirm(`¿Entregaste el regalo de cumpleaños a ${socia.primer_nombre}?`)) return;
+    const r = await rpc("club_regalo", { p_clave: clave, p_numero: socia.numero, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Regalo anotado. ¡Feliz cumpleaños a ${r.socia.primer_nombre}! 🎂` });
+  }
+
+  if (!clave) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Equipo Hindica" />
+      <div style={s.card}>
+        <label style={s.label}>Clave del equipo</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        <label style={s.label}>¿En qué tienda estás?</label>
+        <select style={s.input} value={tienda} onChange={(e) => { setTienda(e.target.value); guardar("club_tienda", e.target.value); }}>
+          <option value="">Elegir…</option>{TIENDAS.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+        </select>
+        {msg?.e && <div style={s.err}>{msg.e}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+      </div>
+    </div></div>
   );
 
-  return null;
+  const regaloTxt = { disponible: "🎁 Tiene regalo de cumpleaños disponible", entregado: "Regalo de este año ya entregado",
+    proximo: "Regalo: desde su próximo cumpleaños", sin_fecha: "Sin fecha de cumpleaños" };
+
+  return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub={`Equipo · ${TIENDAS.find((t) => t.id === tienda)?.nombre || "sin tienda"}`} />
+      <div style={s.card}>
+        <label style={{ ...s.label, marginTop: 0 }}>Número de socia o RUT</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input style={s.input} value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Ej: 1023 o 12.345.678-9" />
+          <button style={{ ...s.btn, width: 110 }} onClick={buscar}>{cargando ? "…" : "Buscar"}</button>
+        </div>
+        <div style={s.hint}>Si olvidó su número, búscala por RUT.</div>
+      </div>
+
+      {msg?.e && <div style={s.err}>{msg.e}</div>}
+      {msg?.ok && <div style={{ ...s.ok, fontSize: 16, fontWeight: 600 }}>{msg.ok}</div>}
+
+      {socia && (
+        <div style={{ ...s.card, marginTop: 14 }}>
+          <div style={{ fontSize: 13, color: C.muted }}>Socia N° {socia.numero}</div>
+          <div style={{ fontFamily: serif, fontSize: 30, color: C.magenta }}>{socia.nombre}</div>
+          <div style={{ background: C.soft, borderRadius: 12, padding: "10px 12px", margin: "10px 0 12px", fontSize: 14.5 }}>
+            💬 Llámala por su nombre: <b>"{socia.primer_nombre}"</b>
+            {socia.color_favorito && <> · le encanta el <b>{socia.color_favorito.toLowerCase()}</b></>}
+          </div>
+          {socia.cumple_hoy && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron, fontWeight: 700 }}>🎂 ¡Hoy es su cumpleaños! Salúdala.</div>}
+          {!socia.cumple_hoy && socia.cumple_este_mes && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron }}>🎂 Está de cumpleaños este mes</div>}
+          <div style={{ margin: "12px 0" }}>
+            <span style={s.tag(socia.bienvenida_disponible ? C.magenta : C.teal)}>
+              {socia.bienvenida_disponible ? "20% de bienvenida disponible" : "Descuento socia 5%"}</span>
+            <span style={s.tag(socia.regalo === "disponible" ? C.saffron : C.muted)}>{regaloTxt[socia.regalo]}</span>
+            <span style={s.tag(C.muted)}>{socia.compras} compra{socia.compras === 1 ? "" : "s"}</span>
+          </div>
+          {socia.bienvenida_disponible ? (
+            <>
+              <button style={s.btn} onClick={() => compra(true)}>Compra con 20% de bienvenida</button>
+              <div style={s.hint}>El 20% se usa una sola vez y reemplaza al 5% en esa compra.</div>
+            </>
+          ) : (
+            <button style={{ ...s.btn, background: C.teal }} onClick={() => compra(false)}>Compra con 5% de socia</button>
+          )}
+          {socia.regalo === "disponible" && (
+            <button style={{ ...s.btn2, marginTop: 10, borderColor: C.saffron }} onClick={regalo}>🎁 Entregar regalo de cumpleaños</button>
+          )}
+        </div>
+      )}
+
+      <div style={{ ...s.card, marginTop: 14 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>¿No es socia y quiere unirse?</div>
+        <div style={{ fontSize: 14, color: C.muted, marginBottom: 10 }}>Que escanee el QR del mesón con su celular. Si no puede, inscríbela tú aquí mismo.</div>
+        <button style={s.btn2} onClick={() => { window.location.href = `/?t=${tienda}`; }}>Abrir formulario de inscripción</button>
+      </div>
+      <button style={{ ...s.btn2, background: "transparent", border: "none", color: C.muted }} onClick={salir}>Cerrar sesión</button>
+    </div></div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+//  3. PANEL DE LA DUEÑA  →  /#duena
+// ════════════════════════════════════════════════════════════════
+function Duena() {
+  const [clave, setClave] = useState(() => { try { return sessionStorage.getItem("club_duena") || ""; } catch { return ""; } });
+  const [entrada, setEntrada] = useState("");
+  const [socias, setSocias] = useState(null);
+  const [tab, setTab] = useState("cumple");
+  const [error, setError] = useState("");
+
+  async function cargar(k = clave) {
+    const r = await rpc("club_duena_lista", { p_clave: k });
+    if (!r.ok) { setError(r.error); setClave(""); try { sessionStorage.removeItem("club_duena"); } catch {} return; }
+    setSocias(r.socias); setError("");
+  }
+  async function entrar() {
+    const r = await rpc("club_duena_lista", { p_clave: entrada });
+    if (!r.ok) return setError(r.error);
+    try { sessionStorage.setItem("club_duena", entrada); } catch {}
+    setClave(entrada); setSocias(r.socias); setError("");
+  }
+  useEffect(() => { if (clave) cargar(clave); }, []); // eslint-disable-line
+
+  if (!clave || !socias) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Panel de la dueña" />
+      <div style={s.card}>
+        <label style={s.label}>Clave de dueña</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        {error && <div style={s.err}>{error}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+        <div style={s.hint}>Por seguridad, la sesión se cierra al cerrar el navegador.</div>
+      </div>
+    </div></div>
+  );
+
+  const tabs = [["cumple", "🎂 Cumpleaños"], ["mensajes", "💌 Mensajes"], ["socias", "👥 Socias"], ["resumen", "📊 Resumen"]];
+  return (
+    <div style={s.page}><div style={s.wide}>
+      <Logo sub={`${socias.length} socias`} />
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", marginBottom: 14 }}>
+        {tabs.map(([id, t]) => <div key={id} style={{ ...s.chip(tab === id), whiteSpace: "nowrap" }} onClick={() => setTab(id)}>{t}</div>)}
+      </div>
+      {tab === "cumple" && <Cumples socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "mensajes" && <Mensajes socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "socias" && <ListaSocias socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "resumen" && <Resumen socias={socias} />}
+    </div></div>
+  );
+// ════════════════════════════════════════════════════════════════
+//  2. PANEL DEL EQUIPO (vendedoras)  →  /#equipo
+// ════════════════════════════════════════════════════════════════
+function Equipo() {
+  const [clave, setClave] = useState(leer("club_clave_equipo") || "");
+  const [entrada, setEntrada] = useState("");
+  const [tienda, setTienda] = useState(leer("club_tienda") || "");
+  const [busca, setBusca] = useState("");
+  const [socia, setSocia] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [cargando, setCargando] = useState(false);
+
+  async function entrar() {
+    const r = await rpc("club_buscar", { p_clave: entrada, p_numero: 0 });
+    if (r.error && r.error.startsWith("Clave")) return setMsg({ e: r.error });
+    guardar("club_clave_equipo", entrada); setClave(entrada); setMsg(null);
+  }
+  function salir() { guardar("club_clave_equipo", null); setClave(""); setSocia(null); }
+
+  async function buscar() {
+    setMsg(null); setSocia(null);
+    const v = busca.trim();
+    if (!v) return;
+    const esNumero = /^\d{4,6}$/.test(v);
+    setCargando(true);
+    const r = await rpc("club_buscar", esNumero ? { p_clave: clave, p_numero: Number(v) } : { p_clave: clave, p_rut: v });
+    setCargando(false);
+    if (!r.ok) { if (r.error?.startsWith("Clave")) salir(); return setMsg({ e: r.error }); }
+    setSocia(r.socia);
+  }
+  async function compra(bienvenida) {
+    const r = await rpc("club_compra", { p_clave: clave, p_numero: socia.numero, p_bienvenida: bienvenida, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Listo. Aplica ${r.descuento}% de descuento a ${r.socia.primer_nombre}.` });
+  }
+  async function regalo() {
+    if (!window.confirm(`¿Entregaste el regalo de cumpleaños a ${socia.primer_nombre}?`)) return;
+    const r = await rpc("club_regalo", { p_clave: clave, p_numero: socia.numero, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Regalo anotado. ¡Feliz cumpleaños a ${r.socia.primer_nombre}! 🎂` });
+  }
+
+  if (!clave) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Equipo Hindica" />
+      <div style={s.card}>
+        <label style={s.label}>Clave del equipo</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        <label style={s.label}>¿En qué tienda estás?</label>
+        <select style={s.input} value={tienda} onChange={(e) => { setTienda(e.target.value); guardar("club_tienda", e.target.value); }}>
+          <option value="">Elegir…</option>{TIENDAS.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+        </select>
+        {msg?.e && <div style={s.err}>{msg.e}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+      </div>
+    </div></div>
+  );
+
+  const regaloTxt = { disponible: "🎁 Tiene regalo de cumpleaños disponible", entregado: "Regalo de este año ya entregado",
+    proximo: "Regalo: desde su próximo cumpleaños", sin_fecha: "Sin fecha de cumpleaños" };
+
+  return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub={`Equipo · ${TIENDAS.find((t) => t.id === tienda)?.nombre || "sin tienda"}`} />
+      <div style={s.card}>
+        <label style={{ ...s.label, marginTop: 0 }}>Número de socia o RUT</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input style={s.input} value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Ej: 1023 o 12.345.678-9" />
+          <button style={{ ...s.btn, width: 110 }} onClick={buscar}>{cargando ? "…" : "Buscar"}</button>
+        </div>
+        <div style={s.hint}>Si olvidó su número, búscala por RUT.</div>
+      </div>
+
+      {msg?.e && <div style={s.err}>{msg.e}</div>}
+      {msg?.ok && <div style={{ ...s.ok, fontSize: 16, fontWeight: 600 }}>{msg.ok}</div>}
+
+      {socia && (
+        <div style={{ ...s.card, marginTop: 14 }}>
+          <div style={{ fontSize: 13, color: C.muted }}>Socia N° {socia.numero}</div>
+          <div style={{ fontFamily: serif, fontSize: 30, color: C.magenta }}>{socia.nombre}</div>
+          <div style={{ background: C.soft, borderRadius: 12, padding: "10px 12px", margin: "10px 0 12px", fontSize: 14.5 }}>
+            💬 Llámala por su nombre: <b>"{socia.primer_nombre}"</b>
+            {socia.color_favorito && <> · le encanta el <b>{socia.color_favorito.toLowerCase()}</b></>}
+          </div>
+          {socia.cumple_hoy && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron, fontWeight: 700 }}>🎂 ¡Hoy es su cumpleaños! Salúdala.</div>}
+          {!socia.cumple_hoy && socia.cumple_este_mes && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron }}>🎂 Está de cumpleaños este mes</div>}
+          <div style={{ margin: "12px 0" }}>
+            <span style={s.tag(socia.bienvenida_disponible ? C.magenta : C.teal)}>
+              {socia.bienvenida_disponible ? "20% de bienvenida disponible" : "Descuento socia 5%"}</span>
+            <span style={s.tag(socia.regalo === "disponible" ? C.saffron : C.muted)}>{regaloTxt[socia.regalo]}</span>
+            <span style={s.tag(C.muted)}>{socia.compras} compra{socia.compras === 1 ? "" : "s"}</span>
+          </div>
+          {socia.bienvenida_disponible ? (
+            <>
+              <button style={s.btn} onClick={() => compra(true)}>Compra con 20% de bienvenida</button>
+              <div style={s.hint}>El 20% se usa una sola vez y reemplaza al 5% en esa compra.</div>
+            </>
+          ) : (
+            <button style={{ ...s.btn, background: C.teal }} onClick={() => compra(false)}>Compra con 5% de socia</button>
+          )}
+          {socia.regalo === "disponible" && (
+            <button style={{ ...s.btn2, marginTop: 10, borderColor: C.saffron }} onClick={regalo}>🎁 Entregar regalo de cumpleaños</button>
+          )}
+        </div>
+      )}
+
+      <div style={{ ...s.card, marginTop: 14 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>¿No es socia y quiere unirse?</div>
+        <div style={{ fontSize: 14, color: C.muted, marginBottom: 10 }}>Que escanee el QR del mesón con su celular. Si no puede, inscríbela tú aquí mismo.</div>
+        <button style={s.btn2} onClick={() => { window.location.href = `/?t=${tienda}`; }}>Abrir formulario de inscripción</button>
+      </div>
+      <button style={{ ...s.btn2, background: "transparent", border: "none", color: C.muted }} onClick={salir}>Cerrar sesión</button>
+    </div></div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+//  3. PANEL DE LA DUEÑA  →  /#duena
+// ════════════════════════════════════════════════════════════════
+function Duena() {
+  const [clave, setClave] = useState(() => { try { return sessionStorage.getItem("club_duena") || ""; } catch { return ""; } });
+  const [entrada, setEntrada] = useState("");
+  const [socias, setSocias] = useState(null);
+  const [tab, setTab] = useState("cumple");
+  const [error, setError] = useState("");
+
+  async function cargar(k = clave) {
+    const r = await rpc("club_duena_lista", { p_clave: k });
+    if (!r.ok) { setError(r.error); setClave(""); try { sessionStorage.removeItem("club_duena"); } catch {} return; }
+    setSocias(r.socias); setError("");
+  }
+  async function entrar() {
+    const r = await rpc("club_duena_lista", { p_clave: entrada });
+    if (!r.ok) return setError(r.error);
+    try { sessionStorage.setItem("club_duena", entrada); } catch {}
+    setClave(entrada); setSocias(r.socias); setError("");
+  }
+  useEffect(() => { if (clave) cargar(clave); }, []); // eslint-disable-line
+
+  if (!clave || !socias) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Panel de la dueña" />
+      <div style={s.card}>
+        <label style={s.label}>Clave de dueña</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        {error && <div style={s.err}>{error}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+        <div style={s.hint}>Por seguridad, la sesión se cierra al cerrar el navegador.</div>
+      </div>
+    </div></div>
+  );
+
+  const tabs = [["cumple", "🎂 Cumpleaños"], ["mensajes", "💌 Mensajes"], ["socias", "👥 Socias"], ["resumen", "📊 Resumen"]];
+  return (
+    <div style={s.page}><div style={s.wide}>
+      <Logo sub={`${socias.length} socias`} />
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", marginBottom: 14 }}>
+        {tabs.map(([id, t]) => <div key={id} style={{ ...s.chip(tab === id), whiteSpace: "nowrap" }} onClick={() => setTab(id)}>{t}</div>)}
+      </div>
+      {tab === "cumple" && <Cumples socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "mensajes" && <Mensajes socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "socias" && <ListaSocias socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "resumen" && <Resumen socias={socias} />}
+    </div></div>
+  );
+// ════════════════════════════════════════════════════════════════
+//  2. PANEL DEL EQUIPO (vendedoras)  →  /#equipo
+// ════════════════════════════════════════════════════════════════
+function Equipo() {
+  const [clave, setClave] = useState(leer("club_clave_equipo") || "");
+  const [entrada, setEntrada] = useState("");
+  const [tienda, setTienda] = useState(leer("club_tienda") || "");
+  const [busca, setBusca] = useState("");
+  const [socia, setSocia] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [cargando, setCargando] = useState(false);
+
+  async function entrar() {
+    const r = await rpc("club_buscar", { p_clave: entrada, p_numero: 0 });
+    if (r.error && r.error.startsWith("Clave")) return setMsg({ e: r.error });
+    guardar("club_clave_equipo", entrada); setClave(entrada); setMsg(null);
+  }
+  function salir() { guardar("club_clave_equipo", null); setClave(""); setSocia(null); }
+
+  async function buscar() {
+    setMsg(null); setSocia(null);
+    const v = busca.trim();
+    if (!v) return;
+    const esNumero = /^\d{4,6}$/.test(v);
+    setCargando(true);
+    const r = await rpc("club_buscar", esNumero ? { p_clave: clave, p_numero: Number(v) } : { p_clave: clave, p_rut: v });
+    setCargando(false);
+    if (!r.ok) { if (r.error?.startsWith("Clave")) salir(); return setMsg({ e: r.error }); }
+    setSocia(r.socia);
+  }
+  async function compra(bienvenida) {
+    const r = await rpc("club_compra", { p_clave: clave, p_numero: socia.numero, p_bienvenida: bienvenida, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Listo. Aplica ${r.descuento}% de descuento a ${r.socia.primer_nombre}.` });
+  }
+  async function regalo() {
+    if (!window.confirm(`¿Entregaste el regalo de cumpleaños a ${socia.primer_nombre}?`)) return;
+    const r = await rpc("club_regalo", { p_clave: clave, p_numero: socia.numero, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Regalo anotado. ¡Feliz cumpleaños a ${r.socia.primer_nombre}! 🎂` });
+  }
+
+  if (!clave) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Equipo Hindica" />
+      <div style={s.card}>
+        <label style={s.label}>Clave del equipo</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        <label style={s.label}>¿En qué tienda estás?</label>
+        <select style={s.input} value={tienda} onChange={(e) => { setTienda(e.target.value); guardar("club_tienda", e.target.value); }}>
+          <option value="">Elegir…</option>{TIENDAS.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+        </select>
+        {msg?.e && <div style={s.err}>{msg.e}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+      </div>
+    </div></div>
+  );
+
+  const regaloTxt = { disponible: "🎁 Tiene regalo de cumpleaños disponible", entregado: "Regalo de este año ya entregado",
+    proximo: "Regalo: desde su próximo cumpleaños", sin_fecha: "Sin fecha de cumpleaños" };
+
+  return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub={`Equipo · ${TIENDAS.find((t) => t.id === tienda)?.nombre || "sin tienda"}`} />
+      <div style={s.card}>
+        <label style={{ ...s.label, marginTop: 0 }}>Número de socia o RUT</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input style={s.input} value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Ej: 1023 o 12.345.678-9" />
+          <button style={{ ...s.btn, width: 110 }} onClick={buscar}>{cargando ? "…" : "Buscar"}</button>
+        </div>
+        <div style={s.hint}>Si olvidó su número, búscala por RUT.</div>
+      </div>
+
+      {msg?.e && <div style={s.err}>{msg.e}</div>}
+      {msg?.ok && <div style={{ ...s.ok, fontSize: 16, fontWeight: 600 }}>{msg.ok}</div>}
+
+      {socia && (
+        <div style={{ ...s.card, marginTop: 14 }}>
+          <div style={{ fontSize: 13, color: C.muted }}>Socia N° {socia.numero}</div>
+          <div style={{ fontFamily: serif, fontSize: 30, color: C.magenta }}>{socia.nombre}</div>
+          <div style={{ background: C.soft, borderRadius: 12, padding: "10px 12px", margin: "10px 0 12px", fontSize: 14.5 }}>
+            💬 Llámala por su nombre: <b>"{socia.primer_nombre}"</b>
+            {socia.color_favorito && <> · le encanta el <b>{socia.color_favorito.toLowerCase()}</b></>}
+          </div>
+          {socia.cumple_hoy && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron, fontWeight: 700 }}>🎂 ¡Hoy es su cumpleaños! Salúdala.</div>}
+          {!socia.cumple_hoy && socia.cumple_este_mes && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron }}>🎂 Está de cumpleaños este mes</div>}
+          <div style={{ margin: "12px 0" }}>
+            <span style={s.tag(socia.bienvenida_disponible ? C.magenta : C.teal)}>
+              {socia.bienvenida_disponible ? "20% de bienvenida disponible" : "Descuento socia 5%"}</span>
+            <span style={s.tag(socia.regalo === "disponible" ? C.saffron : C.muted)}>{regaloTxt[socia.regalo]}</span>
+            <span style={s.tag(C.muted)}>{socia.compras} compra{socia.compras === 1 ? "" : "s"}</span>
+          </div>
+          {socia.bienvenida_disponible ? (
+            <>
+              <button style={s.btn} onClick={() => compra(true)}>Compra con 20% de bienvenida</button>
+              <div style={s.hint}>El 20% se usa una sola vez y reemplaza al 5% en esa compra.</div>
+            </>
+          ) : (
+            <button style={{ ...s.btn, background: C.teal }} onClick={() => compra(false)}>Compra con 5% de socia</button>
+          )}
+          {socia.regalo === "disponible" && (
+            <button style={{ ...s.btn2, marginTop: 10, borderColor: C.saffron }} onClick={regalo}>🎁 Entregar regalo de cumpleaños</button>
+          )}
+        </div>
+      )}
+
+      <div style={{ ...s.card, marginTop: 14 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>¿No es socia y quiere unirse?</div>
+        <div style={{ fontSize: 14, color: C.muted, marginBottom: 10 }}>Que escanee el QR del mesón con su celular. Si no puede, inscríbela tú aquí mismo.</div>
+        <button style={s.btn2} onClick={() => { window.location.href = `/?t=${tienda}`; }}>Abrir formulario de inscripción</button>
+      </div>
+      <button style={{ ...s.btn2, background: "transparent", border: "none", color: C.muted }} onClick={salir}>Cerrar sesión</button>
+    </div></div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+//  3. PANEL DE LA DUEÑA  →  /#duena
+// ════════════════════════════════════════════════════════════════
+function Duena() {
+  const [clave, setClave] = useState(() => { try { return sessionStorage.getItem("club_duena") || ""; } catch { return ""; } });
+  const [entrada, setEntrada] = useState("");
+  const [socias, setSocias] = useState(null);
+  const [tab, setTab] = useState("cumple");
+  const [error, setError] = useState("");
+
+  async function cargar(k = clave) {
+    const r = await rpc("club_duena_lista", { p_clave: k });
+    if (!r.ok) { setError(r.error); setClave(""); try { sessionStorage.removeItem("club_duena"); } catch {} return; }
+    setSocias(r.socias); setError("");
+  }
+  async function entrar() {
+    const r = await rpc("club_duena_lista", { p_clave: entrada });
+    if (!r.ok) return setError(r.error);
+    try { sessionStorage.setItem("club_duena", entrada); } catch {}
+    setClave(entrada); setSocias(r.socias); setError("");
+  }
+  useEffect(() => { if (clave) cargar(clave); }, []); // eslint-disable-line
+
+  if (!clave || !socias) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Panel de la dueña" />
+      <div style={s.card}>
+        <label style={s.label}>Clave de dueña</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        {error && <div style={s.err}>{error}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+        <div style={s.hint}>Por seguridad, la sesión se cierra al cerrar el navegador.</div>
+      </div>
+    </div></div>
+  );
+
+  const tabs = [["cumple", "🎂 Cumpleaños"], ["mensajes", "💌 Mensajes"], ["socias", "👥 Socias"], ["resumen", "📊 Resumen"]];
+  return (
+    <div style={s.page}><div style={s.wide}>
+      <Logo sub={`${socias.length} socias`} />
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", marginBottom: 14 }}>
+        {tabs.map(([id, t]) => <div key={id} style={{ ...s.chip(tab === id), whiteSpace: "nowrap" }} onClick={() => setTab(id)}>{t}</div>)}
+      </div>
+      {tab === "cumple" && <Cumples socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "mensajes" && <Mensajes socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "socias" && <ListaSocias socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "resumen" && <Resumen socias={socias} />}
+    </div></div>
+  );
+  // ════════════════════════════════════════════════════════════════
+//  2. PANEL DEL EQUIPO (vendedoras)  →  /#equipo
+// ════════════════════════════════════════════════════════════════
+function Equipo() {
+  const [clave, setClave] = useState(leer("club_clave_equipo") || "");
+  const [entrada, setEntrada] = useState("");
+  const [tienda, setTienda] = useState(leer("club_tienda") || "");
+  const [busca, setBusca] = useState("");
+  const [socia, setSocia] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [cargando, setCargando] = useState(false);
+
+  async function entrar() {
+    const r = await rpc("club_buscar", { p_clave: entrada, p_numero: 0 });
+    if (r.error && r.error.startsWith("Clave")) return setMsg({ e: r.error });
+    guardar("club_clave_equipo", entrada); setClave(entrada); setMsg(null);
+  }
+  function salir() { guardar("club_clave_equipo", null); setClave(""); setSocia(null); }
+
+  async function buscar() {
+    setMsg(null); setSocia(null);
+    const v = busca.trim();
+    if (!v) return;
+    const esNumero = /^\d{4,6}$/.test(v);
+    setCargando(true);
+    const r = await rpc("club_buscar", esNumero ? { p_clave: clave, p_numero: Number(v) } : { p_clave: clave, p_rut: v });
+    setCargando(false);
+    if (!r.ok) { if (r.error?.startsWith("Clave")) salir(); return setMsg({ e: r.error }); }
+    setSocia(r.socia);
+  }
+  async function compra(bienvenida) {
+    const r = await rpc("club_compra", { p_clave: clave, p_numero: socia.numero, p_bienvenida: bienvenida, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Listo. Aplica ${r.descuento}% de descuento a ${r.socia.primer_nombre}.` });
+  }
+  async function regalo() {
+    if (!window.confirm(`¿Entregaste el regalo de cumpleaños a ${socia.primer_nombre}?`)) return;
+    const r = await rpc("club_regalo", { p_clave: clave, p_numero: socia.numero, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Regalo anotado. ¡Feliz cumpleaños a ${r.socia.primer_nombre}! 🎂` });
+  }
+
+  if (!clave) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Equipo Hindica" />
+      <div style={s.card}>
+        <label style={s.label}>Clave del equipo</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        <label style={s.label}>¿En qué tienda estás?</label>
+        <select style={s.input} value={tienda} onChange={(e) => { setTienda(e.target.value); guardar("club_tienda", e.target.value); }}>
+          <option value="">Elegir…</option>{TIENDAS.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+        </select>
+        {msg?.e && <div style={s.err}>{msg.e}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+      </div>
+    </div></div>
+  );
+
+  const regaloTxt = { disponible: "🎁 Tiene regalo de cumpleaños disponible", entregado: "Regalo de este año ya entregado",
+    proximo: "Regalo: desde su próximo cumpleaños", sin_fecha: "Sin fecha de cumpleaños" };
+
+  return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub={`Equipo · ${TIENDAS.find((t) => t.id === tienda)?.nombre || "sin tienda"}`} />
+      <div style={s.card}>
+        <label style={{ ...s.label, marginTop: 0 }}>Número de socia o RUT</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input style={s.input} value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Ej: 1023 o 12.345.678-9" />
+          <button style={{ ...s.btn, width: 110 }} onClick={buscar}>{cargando ? "…" : "Buscar"}</button>
+        </div>
+        <div style={s.hint}>Si olvidó su número, búscala por RUT.</div>
+      </div>
+
+      {msg?.e && <div style={s.err}>{msg.e}</div>}
+      {msg?.ok && <div style={{ ...s.ok, fontSize: 16, fontWeight: 600 }}>{msg.ok}</div>}
+
+      {socia && (
+        <div style={{ ...s.card, marginTop: 14 }}>
+          <div style={{ fontSize: 13, color: C.muted }}>Socia N° {socia.numero}</div>
+          <div style={{ fontFamily: serif, fontSize: 30, color: C.magenta }}>{socia.nombre}</div>
+          <div style={{ background: C.soft, borderRadius: 12, padding: "10px 12px", margin: "10px 0 12px", fontSize: 14.5 }}>
+            💬 Llámala por su nombre: <b>"{socia.primer_nombre}"</b>
+            {socia.color_favorito && <> · le encanta el <b>{socia.color_favorito.toLowerCase()}</b></>}
+          </div>
+          {socia.cumple_hoy && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron, fontWeight: 700 }}>🎂 ¡Hoy es su cumpleaños! Salúdala.</div>}
+          {!socia.cumple_hoy && socia.cumple_este_mes && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron }}>🎂 Está de cumpleaños este mes</div>}
+          <div style={{ margin: "12px 0" }}>
+            <span style={s.tag(socia.bienvenida_disponible ? C.magenta : C.teal)}>
+              {socia.bienvenida_disponible ? "20% de bienvenida disponible" : "Descuento socia 5%"}</span>
+            <span style={s.tag(socia.regalo === "disponible" ? C.saffron : C.muted)}>{regaloTxt[socia.regalo]}</span>
+            <span style={s.tag(C.muted)}>{socia.compras} compra{socia.compras === 1 ? "" : "s"}</span>
+          </div>
+          {socia.bienvenida_disponible ? (
+            <>
+              <button style={s.btn} onClick={() => compra(true)}>Compra con 20% de bienvenida</button>
+              <div style={s.hint}>El 20% se usa una sola vez y reemplaza al 5% en esa compra.</div>
+            </>
+          ) : (
+            <button style={{ ...s.btn, background: C.teal }} onClick={() => compra(false)}>Compra con 5% de socia</button>
+          )}
+          {socia.regalo === "disponible" && (
+            <button style={{ ...s.btn2, marginTop: 10, borderColor: C.saffron }} onClick={regalo}>🎁 Entregar regalo de cumpleaños</button>
+          )}
+        </div>
+      )}
+
+      <div style={{ ...s.card, marginTop: 14 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>¿No es socia y quiere unirse?</div>
+        <div style={{ fontSize: 14, color: C.muted, marginBottom: 10 }}>Que escanee el QR del mesón con su celular. Si no puede, inscríbela tú aquí mismo.</div>
+        <button style={s.btn2} onClick={() => { window.location.href = `/?t=${tienda}`; }}>Abrir formulario de inscripción</button>
+      </div>
+      <button style={{ ...s.btn2, background: "transparent", border: "none", color: C.muted }} onClick={salir}>Cerrar sesión</button>
+    </div></div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+//  3. PANEL DE LA DUEÑA  →  /#duena
+// ════════════════════════════════════════════════════════════════
+function Duena() {
+  const [clave, setClave] = useState(() => { try { return sessionStorage.getItem("club_duena") || ""; } catch { return ""; } });
+  const [entrada, setEntrada] = useState("");
+  const [socias, setSocias] = useState(null);
+  const [tab, setTab] = useState("cumple");
+  const [error, setError] = useState("");
+
+  async function cargar(k = clave) {
+    const r = await rpc("club_duena_lista", { p_clave: k });
+    if (!r.ok) { setError(r.error); setClave(""); try { sessionStorage.removeItem("club_duena"); } catch {} return; }
+    setSocias(r.socias); setError("");
+  }
+  async function entrar() {
+    const r = await rpc("club_duena_lista", { p_clave: entrada });
+    if (!r.ok) return setError(r.error);
+    try { sessionStorage.setItem("club_duena", entrada); } catch {}
+    setClave(entrada); setSocias(r.socias); setError("");
+  }
+  useEffect(() => { if (clave) cargar(clave); }, []); // eslint-disable-line
+
+  if (!clave || !socias) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Panel de la dueña" />
+      <div style={s.card}>
+        <label style={s.label}>Clave de dueña</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        {error && <div style={s.err}>{error}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+        <div style={s.hint}>Por seguridad, la sesión se cierra al cerrar el navegador.</div>
+      </div>
+    </div></div>
+  );
+
+  const tabs = [["cumple", "🎂 Cumpleaños"], ["mensajes", "💌 Mensajes"], ["socias", "👥 Socias"], ["resumen", "📊 Resumen"]];
+  return (
+    <div style={s.page}><div style={s.wide}>
+      <Logo sub={`${socias.length} socias`} />
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", marginBottom: 14 }}>
+        {tabs.map(([id, t]) => <div key={id} style={{ ...s.chip(tab === id), whiteSpace: "nowrap" }} onClick={() => setTab(id)}>{t}</div>)}
+      </div>
+      {tab === "cumple" && <Cumples socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "mensajes" && <Mensajes socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "socias" && <ListaSocias socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "resumen" && <Resumen socias={socias} />}
+    </div></div>
+  );
+// ════════════════════════════════════════════════════════════════
+//  2. PANEL DEL EQUIPO (vendedoras)  →  /#equipo
+// ════════════════════════════════════════════════════════════════
+function Equipo() {
+  const [clave, setClave] = useState(leer("club_clave_equipo") || "");
+  const [entrada, setEntrada] = useState("");
+  const [tienda, setTienda] = useState(leer("club_tienda") || "");
+  const [busca, setBusca] = useState("");
+  const [socia, setSocia] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [cargando, setCargando] = useState(false);
+
+  async function entrar() {
+    const r = await rpc("club_buscar", { p_clave: entrada, p_numero: 0 });
+    if (r.error && r.error.startsWith("Clave")) return setMsg({ e: r.error });
+    guardar("club_clave_equipo", entrada); setClave(entrada); setMsg(null);
+  }
+  function salir() { guardar("club_clave_equipo", null); setClave(""); setSocia(null); }
+
+  async function buscar() {
+    setMsg(null); setSocia(null);
+    const v = busca.trim();
+    if (!v) return;
+    const esNumero = /^\d{4,6}$/.test(v);
+    setCargando(true);
+    const r = await rpc("club_buscar", esNumero ? { p_clave: clave, p_numero: Number(v) } : { p_clave: clave, p_rut: v });
+    setCargando(false);
+    if (!r.ok) { if (r.error?.startsWith("Clave")) salir(); return setMsg({ e: r.error }); }
+    setSocia(r.socia);
+  }
+  async function compra(bienvenida) {
+    const r = await rpc("club_compra", { p_clave: clave, p_numero: socia.numero, p_bienvenida: bienvenida, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Listo. Aplica ${r.descuento}% de descuento a ${r.socia.primer_nombre}.` });
+  }
+  async function regalo() {
+    if (!window.confirm(`¿Entregaste el regalo de cumpleaños a ${socia.primer_nombre}?`)) return;
+    const r = await rpc("club_regalo", { p_clave: clave, p_numero: socia.numero, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Regalo anotado. ¡Feliz cumpleaños a ${r.socia.primer_nombre}! 🎂` });
+  }
+
+  if (!clave) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Equipo Hindica" />
+      <div style={s.card}>
+        <label style={s.label}>Clave del equipo</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        <label style={s.label}>¿En qué tienda estás?</label>
+        <select style={s.input} value={tienda} onChange={(e) => { setTienda(e.target.value); guardar("club_tienda", e.target.value); }}>
+          <option value="">Elegir…</option>{TIENDAS.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+        </select>
+        {msg?.e && <div style={s.err}>{msg.e}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+      </div>
+    </div></div>
+  );
+
+  const regaloTxt = { disponible: "🎁 Tiene regalo de cumpleaños disponible", entregado: "Regalo de este año ya entregado",
+    proximo: "Regalo: desde su próximo cumpleaños", sin_fecha: "Sin fecha de cumpleaños" };
+
+  return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub={`Equipo · ${TIENDAS.find((t) => t.id === tienda)?.nombre || "sin tienda"}`} />
+      <div style={s.card}>
+        <label style={{ ...s.label, marginTop: 0 }}>Número de socia o RUT</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input style={s.input} value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Ej: 1023 o 12.345.678-9" />
+          <button style={{ ...s.btn, width: 110 }} onClick={buscar}>{cargando ? "…" : "Buscar"}</button>
+        </div>
+        <div style={s.hint}>Si olvidó su número, búscala por RUT.</div>
+      </div>
+
+      {msg?.e && <div style={s.err}>{msg.e}</div>}
+      {msg?.ok && <div style={{ ...s.ok, fontSize: 16, fontWeight: 600 }}>{msg.ok}</div>}
+
+      {socia && (
+        <div style={{ ...s.card, marginTop: 14 }}>
+          <div style={{ fontSize: 13, color: C.muted }}>Socia N° {socia.numero}</div>
+          <div style={{ fontFamily: serif, fontSize: 30, color: C.magenta }}>{socia.nombre}</div>
+          <div style={{ background: C.soft, borderRadius: 12, padding: "10px 12px", margin: "10px 0 12px", fontSize: 14.5 }}>
+            💬 Llámala por su nombre: <b>"{socia.primer_nombre}"</b>
+            {socia.color_favorito && <> · le encanta el <b>{socia.color_favorito.toLowerCase()}</b></>}
+          </div>
+          {socia.cumple_hoy && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron, fontWeight: 700 }}>🎂 ¡Hoy es su cumpleaños! Salúdala.</div>}
+          {!socia.cumple_hoy && socia.cumple_este_mes && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron }}>🎂 Está de cumpleaños este mes</div>}
+          <div style={{ margin: "12px 0" }}>
+            <span style={s.tag(socia.bienvenida_disponible ? C.magenta : C.teal)}>
+              {socia.bienvenida_disponible ? "20% de bienvenida disponible" : "Descuento socia 5%"}</span>
+            <span style={s.tag(socia.regalo === "disponible" ? C.saffron : C.muted)}>{regaloTxt[socia.regalo]}</span>
+            <span style={s.tag(C.muted)}>{socia.compras} compra{socia.compras === 1 ? "" : "s"}</span>
+          </div>
+          {socia.bienvenida_disponible ? (
+            <>
+              <button style={s.btn} onClick={() => compra(true)}>Compra con 20% de bienvenida</button>
+              <div style={s.hint}>El 20% se usa una sola vez y reemplaza al 5% en esa compra.</div>
+            </>
+          ) : (
+            <button style={{ ...s.btn, background: C.teal }} onClick={() => compra(false)}>Compra con 5% de socia</button>
+          )}
+          {socia.regalo === "disponible" && (
+            <button style={{ ...s.btn2, marginTop: 10, borderColor: C.saffron }} onClick={regalo}>🎁 Entregar regalo de cumpleaños</button>
+          )}
+        </div>
+      )}
+
+      <div style={{ ...s.card, marginTop: 14 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>¿No es socia y quiere unirse?</div>
+        <div style={{ fontSize: 14, color: C.muted, marginBottom: 10 }}>Que escanee el QR del mesón con su celular. Si no puede, inscríbela tú aquí mismo.</div>
+        <button style={s.btn2} onClick={() => { window.location.href = `/?t=${tienda}`; }}>Abrir formulario de inscripción</button>
+      </div>
+      <button style={{ ...s.btn2, background: "transparent", border: "none", color: C.muted }} onClick={salir}>Cerrar sesión</button>
+    </div></div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+//  3. PANEL DE LA DUEÑA  →  /#duena
+// ════════════════════════════════════════════════════════════════
+function Duena() {
+  const [clave, setClave] = useState(() => { try { return sessionStorage.getItem("club_duena") || ""; } catch { return ""; } });
+  const [entrada, setEntrada] = useState("");
+  const [socias, setSocias] = useState(null);
+  const [tab, setTab] = useState("cumple");
+  const [error, setError] = useState("");
+
+  async function cargar(k = clave) {
+    const r = await rpc("club_duena_lista", { p_clave: k });
+    if (!r.ok) { setError(r.error); setClave(""); try { sessionStorage.removeItem("club_duena"); } catch {} return; }
+    setSocias(r.socias); setError("");
+  }
+  async function entrar() {
+    const r = await rpc("club_duena_lista", { p_clave: entrada });
+    if (!r.ok) return setError(r.error);
+    try { sessionStorage.setItem("club_duena", entrada); } catch {}
+    setClave(entrada); setSocias(r.socias); setError("");
+  }
+  useEffect(() => { if (clave) cargar(clave); }, []); // eslint-disable-line
+
+  if (!clave || !socias) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Panel de la dueña" />
+      <div style={s.card}>
+        <label style={s.label}>Clave de dueña</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        {error && <div style={s.err}>{error}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+        <div style={s.hint}>Por seguridad, la sesión se cierra al cerrar el navegador.</div>
+      </div>
+    </div></div>
+  );
+
+  const tabs = [["cumple", "🎂 Cumpleaños"], ["mensajes", "💌 Mensajes"], ["socias", "👥 Socias"], ["resumen", "📊 Resumen"]];
+  return (
+    <div style={s.page}><div style={s.wide}>
+      <Logo sub={`${socias.length} socias`} />
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", marginBottom: 14 }}>
+        {tabs.map(([id, t]) => <div key={id} style={{ ...s.chip(tab === id), whiteSpace: "nowrap" }} onClick={() => setTab(id)}>{t}</div>)}
+      </div>
+      {tab === "cumple" && <Cumples socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "mensajes" && <Mensajes socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "socias" && <ListaSocias socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "resumen" && <Resumen socias={socias} />}
+    </div></div>
+  );
+// ════════════════════════════════════════════════════════════════
+//  2. PANEL DEL EQUIPO (vendedoras)  →  /#equipo
+// ════════════════════════════════════════════════════════════════
+function Equipo() {
+  const [clave, setClave] = useState(leer("club_clave_equipo") || "");
+  const [entrada, setEntrada] = useState("");
+  const [tienda, setTienda] = useState(leer("club_tienda") || "");
+  const [busca, setBusca] = useState("");
+  const [socia, setSocia] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [cargando, setCargando] = useState(false);
+
+  async function entrar() {
+    const r = await rpc("club_buscar", { p_clave: entrada, p_numero: 0 });
+    if (r.error && r.error.startsWith("Clave")) return setMsg({ e: r.error });
+    guardar("club_clave_equipo", entrada); setClave(entrada); setMsg(null);
+  }
+  function salir() { guardar("club_clave_equipo", null); setClave(""); setSocia(null); }
+
+  async function buscar() {
+    setMsg(null); setSocia(null);
+    const v = busca.trim();
+    if (!v) return;
+    const esNumero = /^\d{4,6}$/.test(v);
+    setCargando(true);
+    const r = await rpc("club_buscar", esNumero ? { p_clave: clave, p_numero: Number(v) } : { p_clave: clave, p_rut: v });
+    setCargando(false);
+    if (!r.ok) { if (r.error?.startsWith("Clave")) salir(); return setMsg({ e: r.error }); }
+    setSocia(r.socia);
+  }
+  async function compra(bienvenida) {
+    const r = await rpc("club_compra", { p_clave: clave, p_numero: socia.numero, p_bienvenida: bienvenida, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Listo. Aplica ${r.descuento}% de descuento a ${r.socia.primer_nombre}.` });
+  }
+  async function regalo() {
+    if (!window.confirm(`¿Entregaste el regalo de cumpleaños a ${socia.primer_nombre}?`)) return;
+    const r = await rpc("club_regalo", { p_clave: clave, p_numero: socia.numero, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Regalo anotado. ¡Feliz cumpleaños a ${r.socia.primer_nombre}! 🎂` });
+  }
+
+  if (!clave) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Equipo Hindica" />
+      <div style={s.card}>
+        <label style={s.label}>Clave del equipo</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        <label style={s.label}>¿En qué tienda estás?</label>
+        <select style={s.input} value={tienda} onChange={(e) => { setTienda(e.target.value); guardar("club_tienda", e.target.value); }}>
+          <option value="">Elegir…</option>{TIENDAS.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+        </select>
+        {msg?.e && <div style={s.err}>{msg.e}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+      </div>
+    </div></div>
+  );
+
+  const regaloTxt = { disponible: "🎁 Tiene regalo de cumpleaños disponible", entregado: "Regalo de este año ya entregado",
+    proximo: "Regalo: desde su próximo cumpleaños", sin_fecha: "Sin fecha de cumpleaños" };
+
+  return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub={`Equipo · ${TIENDAS.find((t) => t.id === tienda)?.nombre || "sin tienda"}`} />
+      <div style={s.card}>
+        <label style={{ ...s.label, marginTop: 0 }}>Número de socia o RUT</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input style={s.input} value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Ej: 1023 o 12.345.678-9" />
+          <button style={{ ...s.btn, width: 110 }} onClick={buscar}>{cargando ? "…" : "Buscar"}</button>
+        </div>
+        <div style={s.hint}>Si olvidó su número, búscala por RUT.</div>
+      </div>
+
+      {msg?.e && <div style={s.err}>{msg.e}</div>}
+      {msg?.ok && <div style={{ ...s.ok, fontSize: 16, fontWeight: 600 }}>{msg.ok}</div>}
+
+      {socia && (
+        <div style={{ ...s.card, marginTop: 14 }}>
+          <div style={{ fontSize: 13, color: C.muted }}>Socia N° {socia.numero}</div>
+          <div style={{ fontFamily: serif, fontSize: 30, color: C.magenta }}>{socia.nombre}</div>
+          <div style={{ background: C.soft, borderRadius: 12, padding: "10px 12px", margin: "10px 0 12px", fontSize: 14.5 }}>
+            💬 Llámala por su nombre: <b>"{socia.primer_nombre}"</b>
+            {socia.color_favorito && <> · le encanta el <b>{socia.color_favorito.toLowerCase()}</b></>}
+          </div>
+          {socia.cumple_hoy && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron, fontWeight: 700 }}>🎂 ¡Hoy es su cumpleaños! Salúdala.</div>}
+          {!socia.cumple_hoy && socia.cumple_este_mes && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron }}>🎂 Está de cumpleaños este mes</div>}
+          <div style={{ margin: "12px 0" }}>
+            <span style={s.tag(socia.bienvenida_disponible ? C.magenta : C.teal)}>
+              {socia.bienvenida_disponible ? "20% de bienvenida disponible" : "Descuento socia 5%"}</span>
+            <span style={s.tag(socia.regalo === "disponible" ? C.saffron : C.muted)}>{regaloTxt[socia.regalo]}</span>
+            <span style={s.tag(C.muted)}>{socia.compras} compra{socia.compras === 1 ? "" : "s"}</span>
+          </div>
+          {socia.bienvenida_disponible ? (
+            <>
+              <button style={s.btn} onClick={() => compra(true)}>Compra con 20% de bienvenida</button>
+              <div style={s.hint}>El 20% se usa una sola vez y reemplaza al 5% en esa compra.</div>
+            </>
+          ) : (
+            <button style={{ ...s.btn, background: C.teal }} onClick={() => compra(false)}>Compra con 5% de socia</button>
+          )}
+          {socia.regalo === "disponible" && (
+            <button style={{ ...s.btn2, marginTop: 10, borderColor: C.saffron }} onClick={regalo}>🎁 Entregar regalo de cumpleaños</button>
+          )}
+        </div>
+      )}
+
+      <div style={{ ...s.card, marginTop: 14 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>¿No es socia y quiere unirse?</div>
+        <div style={{ fontSize: 14, color: C.muted, marginBottom: 10 }}>Que escanee el QR del mesón con su celular. Si no puede, inscríbela tú aquí mismo.</div>
+        <button style={s.btn2} onClick={() => { window.location.href = `/?t=${tienda}`; }}>Abrir formulario de inscripción</button>
+      </div>
+      <button style={{ ...s.btn2, background: "transparent", border: "none", color: C.muted }} onClick={salir}>Cerrar sesión</button>
+    </div></div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+//  3. PANEL DE LA DUEÑA  →  /#duena
+// ════════════════════════════════════════════════════════════════
+function Duena() {
+  const [clave, setClave] = useState(() => { try { return sessionStorage.getItem("club_duena") || ""; } catch { return ""; } });
+  const [entrada, setEntrada] = useState("");
+  const [socias, setSocias] = useState(null);
+  const [tab, setTab] = useState("cumple");
+  const [error, setError] = useState("");
+
+  async function cargar(k = clave) {
+    const r = await rpc("club_duena_lista", { p_clave: k });
+    if (!r.ok) { setError(r.error); setClave(""); try { sessionStorage.removeItem("club_duena"); } catch {} return; }
+    setSocias(r.socias); setError("");
+  }
+  async function entrar() {
+    const r = await rpc("club_duena_lista", { p_clave: entrada });
+    if (!r.ok) return setError(r.error);
+    try { sessionStorage.setItem("club_duena", entrada); } catch {}
+    setClave(entrada); setSocias(r.socias); setError("");
+  }
+  useEffect(() => { if (clave) cargar(clave); }, []); // eslint-disable-line
+
+  if (!clave || !socias) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Panel de la dueña" />
+      <div style={s.card}>
+        <label style={s.label}>Clave de dueña</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        {error && <div style={s.err}>{error}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+        <div style={s.hint}>Por seguridad, la sesión se cierra al cerrar el navegador.</div>
+      </div>
+    </div></div>
+  );
+
+  const tabs = [["cumple", "🎂 Cumpleaños"], ["mensajes", "💌 Mensajes"], ["socias", "👥 Socias"], ["resumen", "📊 Resumen"]];
+  return (
+    <div style={s.page}><div style={s.wide}>
+      <Logo sub={`${socias.length} socias`} />
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", marginBottom: 14 }}>
+        {tabs.map(([id, t]) => <div key={id} style={{ ...s.chip(tab === id), whiteSpace: "nowrap" }} onClick={() => setTab(id)}>{t}</div>)}
+      </div>
+      {tab === "cumple" && <Cumples socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "mensajes" && <Mensajes socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "socias" && <ListaSocias socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "resumen" && <Resumen socias={socias} />}
+    </div></div>
+  );
+// ════════════════════════════════════════════════════════════════
+//  2. PANEL DEL EQUIPO (vendedoras)  →  /#equipo
+// ════════════════════════════════════════════════════════════════
+function Equipo() {
+  const [clave, setClave] = useState(leer("club_clave_equipo") || "");
+  const [entrada, setEntrada] = useState("");
+  const [tienda, setTienda] = useState(leer("club_tienda") || "");
+  const [busca, setBusca] = useState("");
+  const [socia, setSocia] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [cargando, setCargando] = useState(false);
+
+  async function entrar() {
+    const r = await rpc("club_buscar", { p_clave: entrada, p_numero: 0 });
+    if (r.error && r.error.startsWith("Clave")) return setMsg({ e: r.error });
+    guardar("club_clave_equipo", entrada); setClave(entrada); setMsg(null);
+  }
+  function salir() { guardar("club_clave_equipo", null); setClave(""); setSocia(null); }
+
+  async function buscar() {
+    setMsg(null); setSocia(null);
+    const v = busca.trim();
+    if (!v) return;
+    const esNumero = /^\d{4,6}$/.test(v);
+    setCargando(true);
+    const r = await rpc("club_buscar", esNumero ? { p_clave: clave, p_numero: Number(v) } : { p_clave: clave, p_rut: v });
+    setCargando(false);
+    if (!r.ok) { if (r.error?.startsWith("Clave")) salir(); return setMsg({ e: r.error }); }
+    setSocia(r.socia);
+  }
+  async function compra(bienvenida) {
+    const r = await rpc("club_compra", { p_clave: clave, p_numero: socia.numero, p_bienvenida: bienvenida, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Listo. Aplica ${r.descuento}% de descuento a ${r.socia.primer_nombre}.` });
+  }
+  async function regalo() {
+    if (!window.confirm(`¿Entregaste el regalo de cumpleaños a ${socia.primer_nombre}?`)) return;
+    const r = await rpc("club_regalo", { p_clave: clave, p_numero: socia.numero, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Regalo anotado. ¡Feliz cumpleaños a ${r.socia.primer_nombre}! 🎂` });
+  }
+
+  if (!clave) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Equipo Hindica" />
+      <div style={s.card}>
+        <label style={s.label}>Clave del equipo</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        <label style={s.label}>¿En qué tienda estás?</label>
+        <select style={s.input} value={tienda} onChange={(e) => { setTienda(e.target.value); guardar("club_tienda", e.target.value); }}>
+          <option value="">Elegir…</option>{TIENDAS.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+        </select>
+        {msg?.e && <div style={s.err}>{msg.e}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+      </div>
+    </div></div>
+  );
+
+  const regaloTxt = { disponible: "🎁 Tiene regalo de cumpleaños disponible", entregado: "Regalo de este año ya entregado",
+    proximo: "Regalo: desde su próximo cumpleaños", sin_fecha: "Sin fecha de cumpleaños" };
+
+  return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub={`Equipo · ${TIENDAS.find((t) => t.id === tienda)?.nombre || "sin tienda"}`} />
+      <div style={s.card}>
+        <label style={{ ...s.label, marginTop: 0 }}>Número de socia o RUT</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input style={s.input} value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Ej: 1023 o 12.345.678-9" />
+          <button style={{ ...s.btn, width: 110 }} onClick={buscar}>{cargando ? "…" : "Buscar"}</button>
+        </div>
+        <div style={s.hint}>Si olvidó su número, búscala por RUT.</div>
+      </div>
+
+      {msg?.e && <div style={s.err}>{msg.e}</div>}
+      {msg?.ok && <div style={{ ...s.ok, fontSize: 16, fontWeight: 600 }}>{msg.ok}</div>}
+
+      {socia && (
+        <div style={{ ...s.card, marginTop: 14 }}>
+          <div style={{ fontSize: 13, color: C.muted }}>Socia N° {socia.numero}</div>
+          <div style={{ fontFamily: serif, fontSize: 30, color: C.magenta }}>{socia.nombre}</div>
+          <div style={{ background: C.soft, borderRadius: 12, padding: "10px 12px", margin: "10px 0 12px", fontSize: 14.5 }}>
+            💬 Llámala por su nombre: <b>"{socia.primer_nombre}"</b>
+            {socia.color_favorito && <> · le encanta el <b>{socia.color_favorito.toLowerCase()}</b></>}
+          </div>
+          {socia.cumple_hoy && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron, fontWeight: 700 }}>🎂 ¡Hoy es su cumpleaños! Salúdala.</div>}
+          {!socia.cumple_hoy && socia.cumple_este_mes && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron }}>🎂 Está de cumpleaños este mes</div>}
+          <div style={{ margin: "12px 0" }}>
+            <span style={s.tag(socia.bienvenida_disponible ? C.magenta : C.teal)}>
+              {socia.bienvenida_disponible ? "20% de bienvenida disponible" : "Descuento socia 5%"}</span>
+            <span style={s.tag(socia.regalo === "disponible" ? C.saffron : C.muted)}>{regaloTxt[socia.regalo]}</span>
+            <span style={s.tag(C.muted)}>{socia.compras} compra{socia.compras === 1 ? "" : "s"}</span>
+          </div>
+          {socia.bienvenida_disponible ? (
+            <>
+              <button style={s.btn} onClick={() => compra(true)}>Compra con 20% de bienvenida</button>
+              <div style={s.hint}>El 20% se usa una sola vez y reemplaza al 5% en esa compra.</div>
+            </>
+          ) : (
+            <button style={{ ...s.btn, background: C.teal }} onClick={() => compra(false)}>Compra con 5% de socia</button>
+          )}
+          {socia.regalo === "disponible" && (
+            <button style={{ ...s.btn2, marginTop: 10, borderColor: C.saffron }} onClick={regalo}>🎁 Entregar regalo de cumpleaños</button>
+          )}
+        </div>
+      )}
+
+      <div style={{ ...s.card, marginTop: 14 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>¿No es socia y quiere unirse?</div>
+        <div style={{ fontSize: 14, color: C.muted, marginBottom: 10 }}>Que escanee el QR del mesón con su celular. Si no puede, inscríbela tú aquí mismo.</div>
+        <button style={s.btn2} onClick={() => { window.location.href = `/?t=${tienda}`; }}>Abrir formulario de inscripción</button>
+      </div>
+      <button style={{ ...s.btn2, background: "transparent", border: "none", color: C.muted }} onClick={salir}>Cerrar sesión</button>
+    </div></div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+//  3. PANEL DE LA DUEÑA  →  /#duena
+// ════════════════════════════════════════════════════════════════
+function Duena() {
+  const [clave, setClave] = useState(() => { try { return sessionStorage.getItem("club_duena") || ""; } catch { return ""; } });
+  const [entrada, setEntrada] = useState("");
+  const [socias, setSocias] = useState(null);
+  const [tab, setTab] = useState("cumple");
+  const [error, setError] = useState("");
+
+  async function cargar(k = clave) {
+    const r = await rpc("club_duena_lista", { p_clave: k });
+    if (!r.ok) { setError(r.error); setClave(""); try { sessionStorage.removeItem("club_duena"); } catch {} return; }
+    setSocias(r.socias); setError("");
+  }
+  async function entrar() {
+    const r = await rpc("club_duena_lista", { p_clave: entrada });
+    if (!r.ok) return setError(r.error);
+    try { sessionStorage.setItem("club_duena", entrada); } catch {}
+    setClave(entrada); setSocias(r.socias); setError("");
+  }
+  useEffect(() => { if (clave) cargar(clave); }, []); // eslint-disable-line
+
+  if (!clave || !socias) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Panel de la dueña" />
+      <div style={s.card}>
+        <label style={s.label}>Clave de dueña</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        {error && <div style={s.err}>{error}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+        <div style={s.hint}>Por seguridad, la sesión se cierra al cerrar el navegador.</div>
+      </div>
+    </div></div>
+  );
+
+  const tabs = [["cumple", "🎂 Cumpleaños"], ["mensajes", "💌 Mensajes"], ["socias", "👥 Socias"], ["resumen", "📊 Resumen"]];
+  return (
+    <div style={s.page}><div style={s.wide}>
+      <Logo sub={`${socias.length} socias`} />
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", marginBottom: 14 }}>
+        {tabs.map(([id, t]) => <div key={id} style={{ ...s.chip(tab === id), whiteSpace: "nowrap" }} onClick={() => setTab(id)}>{t}</div>)}
+      </div>
+      {tab === "cumple" && <Cumples socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "mensajes" && <Mensajes socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "socias" && <ListaSocias socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "resumen" && <Resumen socias={socias} />}
+    </div></div>
+  );
+  // ════════════════════════════════════════════════════════════════
+//  2. PANEL DEL EQUIPO (vendedoras)  →  /#equipo
+// ════════════════════════════════════════════════════════════════
+function Equipo() {
+  const [clave, setClave] = useState(leer("club_clave_equipo") || "");
+  const [entrada, setEntrada] = useState("");
+  const [tienda, setTienda] = useState(leer("club_tienda") || "");
+  const [busca, setBusca] = useState("");
+  const [socia, setSocia] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [cargando, setCargando] = useState(false);
+
+  async function entrar() {
+    const r = await rpc("club_buscar", { p_clave: entrada, p_numero: 0 });
+    if (r.error && r.error.startsWith("Clave")) return setMsg({ e: r.error });
+    guardar("club_clave_equipo", entrada); setClave(entrada); setMsg(null);
+  }
+  function salir() { guardar("club_clave_equipo", null); setClave(""); setSocia(null); }
+
+  async function buscar() {
+    setMsg(null); setSocia(null);
+    const v = busca.trim();
+    if (!v) return;
+    const esNumero = /^\d{4,6}$/.test(v);
+    setCargando(true);
+    const r = await rpc("club_buscar", esNumero ? { p_clave: clave, p_numero: Number(v) } : { p_clave: clave, p_rut: v });
+    setCargando(false);
+    if (!r.ok) { if (r.error?.startsWith("Clave")) salir(); return setMsg({ e: r.error }); }
+    setSocia(r.socia);
+  }
+  async function compra(bienvenida) {
+    const r = await rpc("club_compra", { p_clave: clave, p_numero: socia.numero, p_bienvenida: bienvenida, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Listo. Aplica ${r.descuento}% de descuento a ${r.socia.primer_nombre}.` });
+  }
+  async function regalo() {
+    if (!window.confirm(`¿Entregaste el regalo de cumpleaños a ${socia.primer_nombre}?`)) return;
+    const r = await rpc("club_regalo", { p_clave: clave, p_numero: socia.numero, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Regalo anotado. ¡Feliz cumpleaños a ${r.socia.primer_nombre}! 🎂` });
+  }
+
+  if (!clave) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Equipo Hindica" />
+      <div style={s.card}>
+        <label style={s.label}>Clave del equipo</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        <label style={s.label}>¿En qué tienda estás?</label>
+        <select style={s.input} value={tienda} onChange={(e) => { setTienda(e.target.value); guardar("club_tienda", e.target.value); }}>
+          <option value="">Elegir…</option>{TIENDAS.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+        </select>
+        {msg?.e && <div style={s.err}>{msg.e}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+      </div>
+    </div></div>
+  );
+
+  const regaloTxt = { disponible: "🎁 Tiene regalo de cumpleaños disponible", entregado: "Regalo de este año ya entregado",
+    proximo: "Regalo: desde su próximo cumpleaños", sin_fecha: "Sin fecha de cumpleaños" };
+
+  return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub={`Equipo · ${TIENDAS.find((t) => t.id === tienda)?.nombre || "sin tienda"}`} />
+      <div style={s.card}>
+        <label style={{ ...s.label, marginTop: 0 }}>Número de socia o RUT</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input style={s.input} value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Ej: 1023 o 12.345.678-9" />
+          <button style={{ ...s.btn, width: 110 }} onClick={buscar}>{cargando ? "…" : "Buscar"}</button>
+        </div>
+        <div style={s.hint}>Si olvidó su número, búscala por RUT.</div>
+      </div>
+
+      {msg?.e && <div style={s.err}>{msg.e}</div>}
+      {msg?.ok && <div style={{ ...s.ok, fontSize: 16, fontWeight: 600 }}>{msg.ok}</div>}
+
+      {socia && (
+        <div style={{ ...s.card, marginTop: 14 }}>
+          <div style={{ fontSize: 13, color: C.muted }}>Socia N° {socia.numero}</div>
+          <div style={{ fontFamily: serif, fontSize: 30, color: C.magenta }}>{socia.nombre}</div>
+          <div style={{ background: C.soft, borderRadius: 12, padding: "10px 12px", margin: "10px 0 12px", fontSize: 14.5 }}>
+            💬 Llámala por su nombre: <b>"{socia.primer_nombre}"</b>
+            {socia.color_favorito && <> · le encanta el <b>{socia.color_favorito.toLowerCase()}</b></>}
+          </div>
+          {socia.cumple_hoy && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron, fontWeight: 700 }}>🎂 ¡Hoy es su cumpleaños! Salúdala.</div>}
+          {!socia.cumple_hoy && socia.cumple_este_mes && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron }}>🎂 Está de cumpleaños este mes</div>}
+          <div style={{ margin: "12px 0" }}>
+            <span style={s.tag(socia.bienvenida_disponible ? C.magenta : C.teal)}>
+              {socia.bienvenida_disponible ? "20% de bienvenida disponible" : "Descuento socia 5%"}</span>
+            <span style={s.tag(socia.regalo === "disponible" ? C.saffron : C.muted)}>{regaloTxt[socia.regalo]}</span>
+            <span style={s.tag(C.muted)}>{socia.compras} compra{socia.compras === 1 ? "" : "s"}</span>
+          </div>
+          {socia.bienvenida_disponible ? (
+            <>
+              <button style={s.btn} onClick={() => compra(true)}>Compra con 20% de bienvenida</button>
+              <div style={s.hint}>El 20% se usa una sola vez y reemplaza al 5% en esa compra.</div>
+            </>
+          ) : (
+            <button style={{ ...s.btn, background: C.teal }} onClick={() => compra(false)}>Compra con 5% de socia</button>
+          )}
+          {socia.regalo === "disponible" && (
+            <button style={{ ...s.btn2, marginTop: 10, borderColor: C.saffron }} onClick={regalo}>🎁 Entregar regalo de cumpleaños</button>
+          )}
+        </div>
+      )}
+
+      <div style={{ ...s.card, marginTop: 14 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>¿No es socia y quiere unirse?</div>
+        <div style={{ fontSize: 14, color: C.muted, marginBottom: 10 }}>Que escanee el QR del mesón con su celular. Si no puede, inscríbela tú aquí mismo.</div>
+        <button style={s.btn2} onClick={() => { window.location.href = `/?t=${tienda}`; }}>Abrir formulario de inscripción</button>
+      </div>
+      <button style={{ ...s.btn2, background: "transparent", border: "none", color: C.muted }} onClick={salir}>Cerrar sesión</button>
+    </div></div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+//  3. PANEL DE LA DUEÑA  →  /#duena
+// ════════════════════════════════════════════════════════════════
+function Duena() {
+  const [clave, setClave] = useState(() => { try { return sessionStorage.getItem("club_duena") || ""; } catch { return ""; } });
+  const [entrada, setEntrada] = useState("");
+  const [socias, setSocias] = useState(null);
+  const [tab, setTab] = useState("cumple");
+  const [error, setError] = useState("");
+
+  async function cargar(k = clave) {
+    const r = await rpc("club_duena_lista", { p_clave: k });
+    if (!r.ok) { setError(r.error); setClave(""); try { sessionStorage.removeItem("club_duena"); } catch {} return; }
+    setSocias(r.socias); setError("");
+  }
+  async function entrar() {
+    const r = await rpc("club_duena_lista", { p_clave: entrada });
+    if (!r.ok) return setError(r.error);
+    try { sessionStorage.setItem("club_duena", entrada); } catch {}
+    setClave(entrada); setSocias(r.socias); setError("");
+  }
+  useEffect(() => { if (clave) cargar(clave); }, []); // eslint-disable-line
+
+  if (!clave || !socias) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Panel de la dueña" />
+      <div style={s.card}>
+        <label style={s.label}>Clave de dueña</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        {error && <div style={s.err}>{error}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+        <div style={s.hint}>Por seguridad, la sesión se cierra al cerrar el navegador.</div>
+      </div>
+    </div></div>
+  );
+
+  const tabs = [["cumple", "🎂 Cumpleaños"], ["mensajes", "💌 Mensajes"], ["socias", "👥 Socias"], ["resumen", "📊 Resumen"]];
+  return (
+    <div style={s.page}><div style={s.wide}>
+      <Logo sub={`${socias.length} socias`} />
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", marginBottom: 14 }}>
+        {tabs.map(([id, t]) => <div key={id} style={{ ...s.chip(tab === id), whiteSpace: "nowrap" }} onClick={() => setTab(id)}>{t}</div>)}
+      </div>
+      {tab === "cumple" && <Cumples socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "mensajes" && <Mensajes socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "socias" && <ListaSocias socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "resumen" && <Resumen socias={socias} />}
+    </div></div>
+  );
+// ════════════════════════════════════════════════════════════════
+//  2. PANEL DEL EQUIPO (vendedoras)  →  /#equipo
+// ════════════════════════════════════════════════════════════════
+function Equipo() {
+  const [clave, setClave] = useState(leer("club_clave_equipo") || "");
+  const [entrada, setEntrada] = useState("");
+  const [tienda, setTienda] = useState(leer("club_tienda") || "");
+  const [busca, setBusca] = useState("");
+  const [socia, setSocia] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [cargando, setCargando] = useState(false);
+
+  async function entrar() {
+    const r = await rpc("club_buscar", { p_clave: entrada, p_numero: 0 });
+    if (r.error && r.error.startsWith("Clave")) return setMsg({ e: r.error });
+    guardar("club_clave_equipo", entrada); setClave(entrada); setMsg(null);
+  }
+  function salir() { guardar("club_clave_equipo", null); setClave(""); setSocia(null); }
+
+  async function buscar() {
+    setMsg(null); setSocia(null);
+    const v = busca.trim();
+    if (!v) return;
+    const esNumero = /^\d{4,6}$/.test(v);
+    setCargando(true);
+    const r = await rpc("club_buscar", esNumero ? { p_clave: clave, p_numero: Number(v) } : { p_clave: clave, p_rut: v });
+    setCargando(false);
+    if (!r.ok) { if (r.error?.startsWith("Clave")) salir(); return setMsg({ e: r.error }); }
+    setSocia(r.socia);
+  }
+  async function compra(bienvenida) {
+    const r = await rpc("club_compra", { p_clave: clave, p_numero: socia.numero, p_bienvenida: bienvenida, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Listo. Aplica ${r.descuento}% de descuento a ${r.socia.primer_nombre}.` });
+  }
+  async function regalo() {
+    if (!window.confirm(`¿Entregaste el regalo de cumpleaños a ${socia.primer_nombre}?`)) return;
+    const r = await rpc("club_regalo", { p_clave: clave, p_numero: socia.numero, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Regalo anotado. ¡Feliz cumpleaños a ${r.socia.primer_nombre}! 🎂` });
+  }
+
+  if (!clave) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Equipo Hindica" />
+      <div style={s.card}>
+        <label style={s.label}>Clave del equipo</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        <label style={s.label}>¿En qué tienda estás?</label>
+        <select style={s.input} value={tienda} onChange={(e) => { setTienda(e.target.value); guardar("club_tienda", e.target.value); }}>
+          <option value="">Elegir…</option>{TIENDAS.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+        </select>
+        {msg?.e && <div style={s.err}>{msg.e}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+      </div>
+    </div></div>
+  );
+
+  const regaloTxt = { disponible: "🎁 Tiene regalo de cumpleaños disponible", entregado: "Regalo de este año ya entregado",
+    proximo: "Regalo: desde su próximo cumpleaños", sin_fecha: "Sin fecha de cumpleaños" };
+
+  return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub={`Equipo · ${TIENDAS.find((t) => t.id === tienda)?.nombre || "sin tienda"}`} />
+      <div style={s.card}>
+        <label style={{ ...s.label, marginTop: 0 }}>Número de socia o RUT</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input style={s.input} value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Ej: 1023 o 12.345.678-9" />
+          <button style={{ ...s.btn, width: 110 }} onClick={buscar}>{cargando ? "…" : "Buscar"}</button>
+        </div>
+        <div style={s.hint}>Si olvidó su número, búscala por RUT.</div>
+      </div>
+
+      {msg?.e && <div style={s.err}>{msg.e}</div>}
+      {msg?.ok && <div style={{ ...s.ok, fontSize: 16, fontWeight: 600 }}>{msg.ok}</div>}
+
+      {socia && (
+        <div style={{ ...s.card, marginTop: 14 }}>
+          <div style={{ fontSize: 13, color: C.muted }}>Socia N° {socia.numero}</div>
+          <div style={{ fontFamily: serif, fontSize: 30, color: C.magenta }}>{socia.nombre}</div>
+          <div style={{ background: C.soft, borderRadius: 12, padding: "10px 12px", margin: "10px 0 12px", fontSize: 14.5 }}>
+            💬 Llámala por su nombre: <b>"{socia.primer_nombre}"</b>
+            {socia.color_favorito && <> · le encanta el <b>{socia.color_favorito.toLowerCase()}</b></>}
+          </div>
+          {socia.cumple_hoy && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron, fontWeight: 700 }}>🎂 ¡Hoy es su cumpleaños! Salúdala.</div>}
+          {!socia.cumple_hoy && socia.cumple_este_mes && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron }}>🎂 Está de cumpleaños este mes</div>}
+          <div style={{ margin: "12px 0" }}>
+            <span style={s.tag(socia.bienvenida_disponible ? C.magenta : C.teal)}>
+              {socia.bienvenida_disponible ? "20% de bienvenida disponible" : "Descuento socia 5%"}</span>
+            <span style={s.tag(socia.regalo === "disponible" ? C.saffron : C.muted)}>{regaloTxt[socia.regalo]}</span>
+            <span style={s.tag(C.muted)}>{socia.compras} compra{socia.compras === 1 ? "" : "s"}</span>
+          </div>
+          {socia.bienvenida_disponible ? (
+            <>
+              <button style={s.btn} onClick={() => compra(true)}>Compra con 20% de bienvenida</button>
+              <div style={s.hint}>El 20% se usa una sola vez y reemplaza al 5% en esa compra.</div>
+            </>
+          ) : (
+            <button style={{ ...s.btn, background: C.teal }} onClick={() => compra(false)}>Compra con 5% de socia</button>
+          )}
+          {socia.regalo === "disponible" && (
+            <button style={{ ...s.btn2, marginTop: 10, borderColor: C.saffron }} onClick={regalo}>🎁 Entregar regalo de cumpleaños</button>
+          )}
+        </div>
+      )}
+
+      <div style={{ ...s.card, marginTop: 14 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>¿No es socia y quiere unirse?</div>
+        <div style={{ fontSize: 14, color: C.muted, marginBottom: 10 }}>Que escanee el QR del mesón con su celular. Si no puede, inscríbela tú aquí mismo.</div>
+        <button style={s.btn2} onClick={() => { window.location.href = `/?t=${tienda}`; }}>Abrir formulario de inscripción</button>
+      </div>
+      <button style={{ ...s.btn2, background: "transparent", border: "none", color: C.muted }} onClick={salir}>Cerrar sesión</button>
+    </div></div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+//  3. PANEL DE LA DUEÑA  →  /#duena
+// ════════════════════════════════════════════════════════════════
+function Duena() {
+  const [clave, setClave] = useState(() => { try { return sessionStorage.getItem("club_duena") || ""; } catch { return ""; } });
+  const [entrada, setEntrada] = useState("");
+  const [socias, setSocias] = useState(null);
+  const [tab, setTab] = useState("cumple");
+  const [error, setError] = useState("");
+
+  async function cargar(k = clave) {
+    const r = await rpc("club_duena_lista", { p_clave: k });
+    if (!r.ok) { setError(r.error); setClave(""); try { sessionStorage.removeItem("club_duena"); } catch {} return; }
+    setSocias(r.socias); setError("");
+  }
+  async function entrar() {
+    const r = await rpc("club_duena_lista", { p_clave: entrada });
+    if (!r.ok) return setError(r.error);
+    try { sessionStorage.setItem("club_duena", entrada); } catch {}
+    setClave(entrada); setSocias(r.socias); setError("");
+  }
+  useEffect(() => { if (clave) cargar(clave); }, []); // eslint-disable-line
+
+  if (!clave || !socias) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Panel de la dueña" />
+      <div style={s.card}>
+        <label style={s.label}>Clave de dueña</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        {error && <div style={s.err}>{error}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+        <div style={s.hint}>Por seguridad, la sesión se cierra al cerrar el navegador.</div>
+      </div>
+    </div></div>
+  );
+
+  const tabs = [["cumple", "🎂 Cumpleaños"], ["mensajes", "💌 Mensajes"], ["socias", "👥 Socias"], ["resumen", "📊 Resumen"]];
+  return (
+    <div style={s.page}><div style={s.wide}>
+      <Logo sub={`${socias.length} socias`} />
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", marginBottom: 14 }}>
+        {tabs.map(([id, t]) => <div key={id} style={{ ...s.chip(tab === id), whiteSpace: "nowrap" }} onClick={() => setTab(id)}>{t}</div>)}
+      </div>
+      {tab === "cumple" && <Cumples socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "mensajes" && <Mensajes socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "socias" && <ListaSocias socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "resumen" && <Resumen socias={socias} />}
+    </div></div>
+  );
+}// ════════════════════════════════════════════════════════════════
+//  2. PANEL DEL EQUIPO (vendedoras)  →  /#equipo
+// ════════════════════════════════════════════════════════════════
+function Equipo() {
+  const [clave, setClave] = useState(leer("club_clave_equipo") || "");
+  const [entrada, setEntrada] = useState("");
+  const [tienda, setTienda] = useState(leer("club_tienda") || "");
+  const [busca, setBusca] = useState("");
+  const [socia, setSocia] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [cargando, setCargando] = useState(false);
+
+  async function entrar() {
+    const r = await rpc("club_buscar", { p_clave: entrada, p_numero: 0 });
+    if (r.error && r.error.startsWith("Clave")) return setMsg({ e: r.error });
+    guardar("club_clave_equipo", entrada); setClave(entrada); setMsg(null);
+  }
+  function salir() { guardar("club_clave_equipo", null); setClave(""); setSocia(null); }
+
+  async function buscar() {
+    setMsg(null); setSocia(null);
+    const v = busca.trim();
+    if (!v) return;
+    const esNumero = /^\d{4,6}$/.test(v);
+    setCargando(true);
+    const r = await rpc("club_buscar", esNumero ? { p_clave: clave, p_numero: Number(v) } : { p_clave: clave, p_rut: v });
+    setCargando(false);
+    if (!r.ok) { if (r.error?.startsWith("Clave")) salir(); return setMsg({ e: r.error }); }
+    setSocia(r.socia);
+  }
+  async function compra(bienvenida) {
+    const r = await rpc("club_compra", { p_clave: clave, p_numero: socia.numero, p_bienvenida: bienvenida, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Listo. Aplica ${r.descuento}% de descuento a ${r.socia.primer_nombre}.` });
+  }
+  async function regalo() {
+    if (!window.confirm(`¿Entregaste el regalo de cumpleaños a ${socia.primer_nombre}?`)) return;
+    const r = await rpc("club_regalo", { p_clave: clave, p_numero: socia.numero, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Regalo anotado. ¡Feliz cumpleaños a ${r.socia.primer_nombre}! 🎂` });
+  }
+
+  if (!clave) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Equipo Hindica" />
+      <div style={s.card}>
+        <label style={s.label}>Clave del equipo</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        <label style={s.label}>¿En qué tienda estás?</label>
+        <select style={s.input} value={tienda} onChange={(e) => { setTienda(e.target.value); guardar("club_tienda", e.target.value); }}>
+          <option value="">Elegir…</option>{TIENDAS.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+        </select>
+        {msg?.e && <div style={s.err}>{msg.e}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+      </div>
+    </div></div>
+  );
+
+  const regaloTxt = { disponible: "🎁 Tiene regalo de cumpleaños disponible", entregado: "Regalo de este año ya entregado",
+    proximo: "Regalo: desde su próximo cumpleaños", sin_fecha: "Sin fecha de cumpleaños" };
+
+  return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub={`Equipo · ${TIENDAS.find((t) => t.id === tienda)?.nombre || "sin tienda"}`} />
+      <div style={s.card}>
+        <label style={{ ...s.label, marginTop: 0 }}>Número de socia o RUT</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input style={s.input} value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Ej: 1023 o 12.345.678-9" />
+          <button style={{ ...s.btn, width: 110 }} onClick={buscar}>{cargando ? "…" : "Buscar"}</button>
+        </div>
+        <div style={s.hint}>Si olvidó su número, búscala por RUT.</div>
+      </div>
+
+      {msg?.e && <div style={s.err}>{msg.e}</div>}
+      {msg?.ok && <div style={{ ...s.ok, fontSize: 16, fontWeight: 600 }}>{msg.ok}</div>}
+
+      {socia && (
+        <div style={{ ...s.card, marginTop: 14 }}>
+          <div style={{ fontSize: 13, color: C.muted }}>Socia N° {socia.numero}</div>
+          <div style={{ fontFamily: serif, fontSize: 30, color: C.magenta }}>{socia.nombre}</div>
+          <div style={{ background: C.soft, borderRadius: 12, padding: "10px 12px", margin: "10px 0 12px", fontSize: 14.5 }}>
+            💬 Llámala por su nombre: <b>"{socia.primer_nombre}"</b>
+            {socia.color_favorito && <> · le encanta el <b>{socia.color_favorito.toLowerCase()}</b></>}
+          </div>
+          {socia.cumple_hoy && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron, fontWeight: 700 }}>🎂 ¡Hoy es su cumpleaños! Salúdala.</div>}
+          {!socia.cumple_hoy && socia.cumple_este_mes && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron }}>🎂 Está de cumpleaños este mes</div>}
+          <div style={{ margin: "12px 0" }}>
+            <span style={s.tag(socia.bienvenida_disponible ? C.magenta : C.teal)}>
+              {socia.bienvenida_disponible ? "20% de bienvenida disponible" : "Descuento socia 5%"}</span>
+            <span style={s.tag(socia.regalo === "disponible" ? C.saffron : C.muted)}>{regaloTxt[socia.regalo]}</span>
+            <span style={s.tag(C.muted)}>{socia.compras} compra{socia.compras === 1 ? "" : "s"}</span>
+          </div>
+          {socia.bienvenida_disponible ? (
+            <>
+              <button style={s.btn} onClick={() => compra(true)}>Compra con 20% de bienvenida</button>
+              <div style={s.hint}>El 20% se usa una sola vez y reemplaza al 5% en esa compra.</div>
+            </>
+          ) : (
+            <button style={{ ...s.btn, background: C.teal }} onClick={() => compra(false)}>Compra con 5% de socia</button>
+          )}
+          {socia.regalo === "disponible" && (
+            <button style={{ ...s.btn2, marginTop: 10, borderColor: C.saffron }} onClick={regalo}>🎁 Entregar regalo de cumpleaños</button>
+          )}
+        </div>
+      )}
+
+      <div style={{ ...s.card, marginTop: 14 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>¿No es socia y quiere unirse?</div>
+        <div style={{ fontSize: 14, color: C.muted, marginBottom: 10 }}>Que escanee el QR del mesón con su celular. Si no puede, inscríbela tú aquí mismo.</div>
+        <button style={s.btn2} onClick={() => { window.location.href = `/?t=${tienda}`; }}>Abrir formulario de inscripción</button>
+      </div>
+      <button style={{ ...s.btn2, background: "transparent", border: "none", color: C.muted }} onClick={salir}>Cerrar sesión</button>
+    </div></div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+//  3. PANEL DE LA DUEÑA  →  /#duena
+// ════════════════════════════════════════════════════════════════
+function Duena() {
+  const [clave, setClave] = useState(() => { try { return sessionStorage.getItem("club_duena") || ""; } catch { return ""; } });
+  const [entrada, setEntrada] = useState("");
+  const [socias, setSocias] = useState(null);
+  const [tab, setTab] = useState("cumple");
+  const [error, setError] = useState("");
+
+  async function cargar(k = clave) {
+    const r = await rpc("club_duena_lista", { p_clave: k });
+    if (!r.ok) { setError(r.error); setClave(""); try { sessionStorage.removeItem("club_duena"); } catch {} return; }
+    setSocias(r.socias); setError("");
+  }
+  async function entrar() {
+    const r = await rpc("club_duena_lista", { p_clave: entrada });
+    if (!r.ok) return setError(r.error);
+    try { sessionStorage.setItem("club_duena", entrada); } catch {}
+    setClave(entrada); setSocias(r.socias); setError("");
+  }
+  useEffect(() => { if (clave) cargar(clave); }, []); // eslint-disable-line
+
+  if (!clave || !socias) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Panel de la dueña" />
+      <div style={s.card}>
+        <label style={s.label}>Clave de dueña</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        {error && <div style={s.err}>{error}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+        <div style={s.hint}>Por seguridad, la sesión se cierra al cerrar el navegador.</div>
+      </div>
+    </div></div>
+  );
+
+  const tabs = [["cumple", "🎂 Cumpleaños"], ["mensajes", "💌 Mensajes"], ["socias", "👥 Socias"], ["resumen", "📊 Resumen"]];
+  return (
+    <div style={s.page}><div style={s.wide}>
+      <Logo sub={`${socias.length} socias`} />
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", marginBottom: 14 }}>
+        {tabs.map(([id, t]) => <div key={id} style={{ ...s.chip(tab === id), whiteSpace: "nowrap" }} onClick={() => setTab(id)}>{t}</div>)}
+      </div>
+      {tab === "cumple" && <Cumples socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "mensajes" && <Mensajes socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "socias" && <ListaSocias socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "resumen" && <Resumen socias={socias} />}
+    </div></div>
+  );
+}// ════════════════════════════════════════════════════════════════
+//  2. PANEL DEL EQUIPO (vendedoras)  →  /#equipo
+// ════════════════════════════════════════════════════════════════
+function Equipo() {
+  const [clave, setClave] = useState(leer("club_clave_equipo") || "");
+  const [entrada, setEntrada] = useState("");
+  const [tienda, setTienda] = useState(leer("club_tienda") || "");
+  const [busca, setBusca] = useState("");
+  const [socia, setSocia] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [cargando, setCargando] = useState(false);
+
+  async function entrar() {
+    const r = await rpc("club_buscar", { p_clave: entrada, p_numero: 0 });
+    if (r.error && r.error.startsWith("Clave")) return setMsg({ e: r.error });
+    guardar("club_clave_equipo", entrada); setClave(entrada); setMsg(null);
+  }
+  function salir() { guardar("club_clave_equipo", null); setClave(""); setSocia(null); }
+
+  async function buscar() {
+    setMsg(null); setSocia(null);
+    const v = busca.trim();
+    if (!v) return;
+    const esNumero = /^\d{4,6}$/.test(v);
+    setCargando(true);
+    const r = await rpc("club_buscar", esNumero ? { p_clave: clave, p_numero: Number(v) } : { p_clave: clave, p_rut: v });
+    setCargando(false);
+    if (!r.ok) { if (r.error?.startsWith("Clave")) salir(); return setMsg({ e: r.error }); }
+    setSocia(r.socia);
+  }
+  async function compra(bienvenida) {
+    const r = await rpc("club_compra", { p_clave: clave, p_numero: socia.numero, p_bienvenida: bienvenida, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Listo. Aplica ${r.descuento}% de descuento a ${r.socia.primer_nombre}.` });
+  }
+  async function regalo() {
+    if (!window.confirm(`¿Entregaste el regalo de cumpleaños a ${socia.primer_nombre}?`)) return;
+    const r = await rpc("club_regalo", { p_clave: clave, p_numero: socia.numero, p_tienda: tienda || null });
+    if (!r.ok) return setMsg({ e: r.error });
+    setSocia(r.socia);
+    setMsg({ ok: `Regalo anotado. ¡Feliz cumpleaños a ${r.socia.primer_nombre}! 🎂` });
+  }
+
+  if (!clave) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Equipo Hindica" />
+      <div style={s.card}>
+        <label style={s.label}>Clave del equipo</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        <label style={s.label}>¿En qué tienda estás?</label>
+        <select style={s.input} value={tienda} onChange={(e) => { setTienda(e.target.value); guardar("club_tienda", e.target.value); }}>
+          <option value="">Elegir…</option>{TIENDAS.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+        </select>
+        {msg?.e && <div style={s.err}>{msg.e}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+      </div>
+    </div></div>
+  );
+
+  const regaloTxt = { disponible: "🎁 Tiene regalo de cumpleaños disponible", entregado: "Regalo de este año ya entregado",
+    proximo: "Regalo: desde su próximo cumpleaños", sin_fecha: "Sin fecha de cumpleaños" };
+
+  return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub={`Equipo · ${TIENDAS.find((t) => t.id === tienda)?.nombre || "sin tienda"}`} />
+      <div style={s.card}>
+        <label style={{ ...s.label, marginTop: 0 }}>Número de socia o RUT</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input style={s.input} value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Ej: 1023 o 12.345.678-9" />
+          <button style={{ ...s.btn, width: 110 }} onClick={buscar}>{cargando ? "…" : "Buscar"}</button>
+        </div>
+        <div style={s.hint}>Si olvidó su número, búscala por RUT.</div>
+      </div>
+
+      {msg?.e && <div style={s.err}>{msg.e}</div>}
+      {msg?.ok && <div style={{ ...s.ok, fontSize: 16, fontWeight: 600 }}>{msg.ok}</div>}
+
+      {socia && (
+        <div style={{ ...s.card, marginTop: 14 }}>
+          <div style={{ fontSize: 13, color: C.muted }}>Socia N° {socia.numero}</div>
+          <div style={{ fontFamily: serif, fontSize: 30, color: C.magenta }}>{socia.nombre}</div>
+          <div style={{ background: C.soft, borderRadius: 12, padding: "10px 12px", margin: "10px 0 12px", fontSize: 14.5 }}>
+            💬 Llámala por su nombre: <b>"{socia.primer_nombre}"</b>
+            {socia.color_favorito && <> · le encanta el <b>{socia.color_favorito.toLowerCase()}</b></>}
+          </div>
+          {socia.cumple_hoy && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron, fontWeight: 700 }}>🎂 ¡Hoy es su cumpleaños! Salúdala.</div>}
+          {!socia.cumple_hoy && socia.cumple_este_mes && <div style={{ ...s.ok, background: "#FFF1DC", color: C.saffron }}>🎂 Está de cumpleaños este mes</div>}
+          <div style={{ margin: "12px 0" }}>
+            <span style={s.tag(socia.bienvenida_disponible ? C.magenta : C.teal)}>
+              {socia.bienvenida_disponible ? "20% de bienvenida disponible" : "Descuento socia 5%"}</span>
+            <span style={s.tag(socia.regalo === "disponible" ? C.saffron : C.muted)}>{regaloTxt[socia.regalo]}</span>
+            <span style={s.tag(C.muted)}>{socia.compras} compra{socia.compras === 1 ? "" : "s"}</span>
+          </div>
+          {socia.bienvenida_disponible ? (
+            <>
+              <button style={s.btn} onClick={() => compra(true)}>Compra con 20% de bienvenida</button>
+              <div style={s.hint}>El 20% se usa una sola vez y reemplaza al 5% en esa compra.</div>
+            </>
+          ) : (
+            <button style={{ ...s.btn, background: C.teal }} onClick={() => compra(false)}>Compra con 5% de socia</button>
+          )}
+          {socia.regalo === "disponible" && (
+            <button style={{ ...s.btn2, marginTop: 10, borderColor: C.saffron }} onClick={regalo}>🎁 Entregar regalo de cumpleaños</button>
+          )}
+        </div>
+      )}
+
+      <div style={{ ...s.card, marginTop: 14 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>¿No es socia y quiere unirse?</div>
+        <div style={{ fontSize: 14, color: C.muted, marginBottom: 10 }}>Que escanee el QR del mesón con su celular. Si no puede, inscríbela tú aquí mismo.</div>
+        <button style={s.btn2} onClick={() => { window.location.href = `/?t=${tienda}`; }}>Abrir formulario de inscripción</button>
+      </div>
+      <button style={{ ...s.btn2, background: "transparent", border: "none", color: C.muted }} onClick={salir}>Cerrar sesión</button>
+    </div></div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+//  3. PANEL DE LA DUEÑA  →  /#duena
+// ════════════════════════════════════════════════════════════════
+function Duena() {
+  const [clave, setClave] = useState(() => { try { return sessionStorage.getItem("club_duena") || ""; } catch { return ""; } });
+  const [entrada, setEntrada] = useState("");
+  const [socias, setSocias] = useState(null);
+  const [tab, setTab] = useState("cumple");
+  const [error, setError] = useState("");
+
+  async function cargar(k = clave) {
+    const r = await rpc("club_duena_lista", { p_clave: k });
+    if (!r.ok) { setError(r.error); setClave(""); try { sessionStorage.removeItem("club_duena"); } catch {} return; }
+    setSocias(r.socias); setError("");
+  }
+  async function entrar() {
+    const r = await rpc("club_duena_lista", { p_clave: entrada });
+    if (!r.ok) return setError(r.error);
+    try { sessionStorage.setItem("club_duena", entrada); } catch {}
+    setClave(entrada); setSocias(r.socias); setError("");
+  }
+  useEffect(() => { if (clave) cargar(clave); }, []); // eslint-disable-line
+
+  if (!clave || !socias) return (
+    <div style={s.page}><div style={s.wrap}>
+      <Logo sub="Panel de la dueña" />
+      <div style={s.card}>
+        <label style={s.label}>Clave de dueña</label>
+        <input style={s.input} type="password" value={entrada} onChange={(e) => setEntrada(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        {error && <div style={s.err}>{error}</div>}
+        <button style={{ ...s.btn, marginTop: 16 }} onClick={entrar}>Entrar</button>
+        <div style={s.hint}>Por seguridad, la sesión se cierra al cerrar el navegador.</div>
+      </div>
+    </div></div>
+  );
+
+  const tabs = [["cumple", "🎂 Cumpleaños"], ["mensajes", "💌 Mensajes"], ["socias", "👥 Socias"], ["resumen", "📊 Resumen"]];
+  return (
+    <div style={s.page}><div style={s.wide}>
+      <Logo sub={`${socias.length} socias`} />
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", marginBottom: 14 }}>
+        {tabs.map(([id, t]) => <div key={id} style={{ ...s.chip(tab === id), whiteSpace: "nowrap" }} onClick={() => setTab(id)}>{t}</div>)}
+      </div>
+      {tab === "cumple" && <Cumples socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "mensajes" && <Mensajes socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "socias" && <ListaSocias socias={socias} clave={clave} recargar={cargar} />}
+      {tab === "resumen" && <Resumen socias={socias} />}
+    </div></div>
+  );
+
 }
